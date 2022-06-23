@@ -2,6 +2,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use log::LevelFilter;
+use futures::{stream, StreamExt};
 
 mod composer;
 mod packagist;
@@ -76,6 +77,8 @@ impl LanguageServer for Backend {
             .await;
 
         let composer_file = composer::parse_file(params.text_document.uri).unwrap();
+        let update_data = packagist::get_packages_info(composer_file.dependencies).await;
+        log::info!("update data {:?}", update_data);
 
         // grab the composer.json file and parse it.
         // after parsing, run async request to fetch the external
