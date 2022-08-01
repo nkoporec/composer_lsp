@@ -10,7 +10,7 @@ pub struct ComposerFile {
     pub dev_dependencies: Vec<ComposerDependency>,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct ComposerDependency {
     pub name: String,
     pub version: String,
@@ -40,9 +40,10 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
         let dependencies = &parsed_contents_object["require"];
         let dep_obj = dependencies.as_object().unwrap();
         for (name,version) in dep_obj {
+            // @todo We need to normalize the composer version.
             let composer_dependency = ComposerDependency{
                 name: name.to_string(),
-                version: version.to_string(),
+                version: version.to_string().replace("^", ""),
                 line: 1,
             };
 
@@ -51,19 +52,20 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
     }
 
     // Get dev dependencies.
-    if parsed_contents_object.contains_key("require-dev") {
-        let dependencies = &parsed_contents_object["require-dev"];
-        let dep_obj = dependencies.as_object().unwrap();
-        for (name,version) in dep_obj {
-            let composer_dependency = ComposerDependency{
-                name: name.to_string(),
-                version: version.to_string(),
-                line: 1,
-            };
+    // @todo.
+    // if parsed_contents_object.contains_key("require-dev") {
+    //     let dependencies = &parsed_contents_object["require-dev"];
+    //     let dep_obj = dependencies.as_object().unwrap();
+    //     for (name,version) in dep_obj {
+    //         let composer_dependency = ComposerDependency{
+    //             name: name.to_string(),
+    //             version: version.to_string(),
+    //             line: 1,
+    //         };
 
-            composer_file.dev_dependencies.push(composer_dependency);
-        }
-    }
+    //         composer_file.dev_dependencies.push(composer_dependency);
+    //     }
+    // }
 
     log::info!("{:?}", composer_file.dev_dependencies);
 

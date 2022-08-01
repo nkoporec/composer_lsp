@@ -27,7 +27,6 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
             let contents: Value = serde_json::from_str(&text.as_ref().unwrap())
                 .unwrap();
 
-
             let mut package_struct = Package{
                 name: package.name,
                 latest_version: String::new(),
@@ -39,7 +38,9 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                 // @todo best var names eveer.
                 let _d = data.as_array().unwrap();
                 let a = data.get(0).unwrap();
-                let c = a.as_object().unwrap().get("version").unwrap();
+                let c = a.as_object().unwrap().get("version_normalized").unwrap();
+
+                // log::info!("{:?}", a);
 
                 package_struct.latest_version = c.to_string();
             }

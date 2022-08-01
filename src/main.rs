@@ -29,17 +29,6 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
-                completion_provider: Some(CompletionOptions {
-                    resolve_provider: Some(false),
-                    trigger_characters: Some(vec![".".to_string()]),
-                    work_done_progress_options: Default::default(),
-                    all_commit_characters: None,
-                }),
-                execute_command_provider: Some(ExecuteCommandOptions {
-                    commands: vec!["dummy.do_something".to_string()],
-                    work_done_progress_options: Default::default(),
-                }),
-
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -47,9 +36,6 @@ impl LanguageServer for Backend {
                     }),
                     file_operations: None,
                 }),
-                definition_provider: Some(OneOf::Left(true)),
-                references_provider: Some(OneOf::Left(true)),
-                rename_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
         })
@@ -76,20 +62,12 @@ impl LanguageServer for Backend {
             .log_message(MessageType::INFO, "file opened!")
             .await;
 
-        let composer_file = composer::parse_file(params.text_document.uri).unwrap();
-        let update_data = packagist::get_packages_info(composer_file.dependencies).await;
-        log::info!("update data {:?}", update_data);
-
-        // grab the composer.json file and parse it.
-        // after parsing, run async request to fetch the external
-        // data of dependencies.
-
-        // self.on_change(TextDocumentItem {
-        //     uri: params.text_document.uri,
-        //     text: params.text_document.text,
-        //     version: params.text_document.version,
-        // })
-        // .await
+        self.on_change(TextDocumentItem {
+            uri: params.text_document.uri,
+            text: params.text_document.text,
+            version: params.text_document.version,
+        })
+        .await
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
@@ -108,6 +86,31 @@ impl LanguageServer for Backend {
 
 impl Backend {
     async fn on_change(&self, params: TextDocumentItem) {
+        let composer_file = composer::parse_file(params.uri.clone()).unwrap();
+        let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
+
+        let mut diagnostics = vec![];
+        for item in composer_file.dependencies {
+            let name = item.name.replace(".", "");
+            let version_normalized = item.version.replace(".", "");
+            let new_version_normalized = update_data.get(&name).unwrap().replace(".", "");
+
+            if new_version_normalized > version_normalized {
+                let diagnostic = || -> Option<Diagnostic> {
+                    // @todo: Figure out how to do the position.
+                    Some(Diagnostic::new_simple(
+                        Range::new(Position { line: 0, character: 1}, Position { line: 0, character: 1 }),
+                        format!("Newest update {:?}", new_version_normalized),
+                    ))
+                }();
+
+                diagnostics.push(diagnostic.unwrap());
+            }
+        }
+
+        self.client
+            .publish_diagnostics(params.uri.clone(), diagnostics, Some(params.version))
+            .await;
     }
 }
 
