@@ -99,7 +99,7 @@ impl Backend {
                 let diagnostic = || -> Option<Diagnostic> {
                     // @todo: Figure out how to do the position.
                     Some(Diagnostic::new_simple(
-                        Range::new(Position { line: 0, character: 1}, Position { line: 0, character: 1 }),
+                        Range::new(Position { line: item.line, character: 1}, Position { line: 0, character: 1 }),
                         format!("Newest update {:?}", new_version_normalized),
                     ))
                 }();
