@@ -45,7 +45,6 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
         let dependencies = &parsed_contents_object["require"];
         let dep_obj = dependencies.as_object().unwrap();
         for (name,version) in dep_obj {
-            // @todo We need to normalize the composer version.
             let line = buffer.get(&name.to_string()).expect("Can't unwrap a line num") - 1;
             let composer_dependency = ComposerDependency{
                 name: name.to_string(),
@@ -112,4 +111,11 @@ fn parse_by_line(filepath: &str) -> HashMap<String, u32> {
     }
 
     buffer
+}
+
+fn version_constraints(version: String) {
+    // caret
+    if version.contains("^") {
+
+    }
 }
