@@ -9,12 +9,12 @@ const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 
 #[derive(Debug)]
 pub struct Package {
-    name: String,
-    latest_version: String,
-    versions: HashMap<i32, Vec<String>>,
+    pub name: String,
+    pub latest_version: String,
+    pub versions: HashMap<i32, Vec<String>>,
 }
 
-pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, String> {
+pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
     log::info!("get_packages_info");
     let client = Client::new();
 
@@ -49,29 +49,27 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
 
                     let version_split: Vec<&str> = version.split(".").collect();
                     // 2
-                    let version_major = version_split.get(0).unwrap();
+                    let version_major = version_split.get(0).cloned().unwrap();
                     let version_major_int = version_major.parse::<i32>().unwrap();
                     // Either Some or None.
                     // If none, create a new vec.
-                    let mut existing = package_struct.versions.get(&version_major_int);
+                    let mut existing = package_struct.versions.get(&version_major_int).cloned();
                     if existing.is_none() {
-                        existing = Some(&vec![]);
+                        existing = Some(vec![]);
                     }
-                    let existing_vec = existing.unwrap();
+                    let mut existing_vec = existing.unwrap();
 
                     // 2110
-                    let version_int = version.replace(".", "").parse::<i32>().unwrap(); 
-                    existing_vec.push(version_int.to_string());
+                    let version_int = version.replace(".", ""); 
+                    existing_vec.push(version_int.clone());
 
-                    // @todo figure this out.
-                    package_struct.versions.insert(version_major_int, existing_vec);
-                    break;
+                    package_struct.versions.insert(version_major_int, existing_vec.to_vec());
+
+                    // Get the latest version.
+                    if &version_int > &package_struct.latest_version {
+                        package_struct.latest_version = version_int
+                    }
                 }
-
-                let a = data.get(1).unwrap();
-                let c = a.as_object().unwrap().get("version_normalized").unwrap();
-
-                package_struct.latest_version = c.to_string();
             }
 
             let result: Result<Package> = Ok(package_struct);
@@ -88,9 +86,9 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
         }
     }
 
-    let mut hashmap: HashMap<String, String> = HashMap::new();
-    for i in result.iter() {
-        hashmap.insert(i.name.to_string(), i.latest_version.to_string());
+    let mut hashmap: HashMap<String, Package> = HashMap::new();
+    for i in result.into_iter() {
+        hashmap.insert(i.name.to_string(), i);
     }
 
     return hashmap;

@@ -88,16 +88,21 @@ impl Backend {
     async fn on_change(&self, params: TextDocumentItem) {
         let composer_file = composer::parse_file(params.uri.clone()).unwrap();
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
+        log::info!("update_data {:#?}", update_data);
 
         let mut diagnostics = vec![];
         for item in composer_file.dependencies {
+            // composer.json data.
             let name = item.name.replace(".", "");
             let version_normalized = item.version.replace(".", "");
-            let new_version_normalized = update_data.get(&name).unwrap().replace(".", "");
 
-            if new_version_normalized > version_normalized {
+            // Packagist data.
+            let package_data = update_data.get(&name).unwrap();
+            let new_version_normalized = &package_data.latest_version;
+
+            // @todo implement version constraints.
+            if new_version_normalized > &version_normalized {
                 let diagnostic = || -> Option<Diagnostic> {
-                    // @todo: Figure out how to do the position.
                     Some(Diagnostic::new_simple(
                         Range::new(Position { line: item.line, character: 1}, Position { line: 0, character: 1 }),
                         format!("Newest update {:?}", new_version_normalized),
