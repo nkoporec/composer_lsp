@@ -93,3 +93,14 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
 
     return hashmap;
 }
+
+pub fn get_latest_constraints_version(package: &Package, constraint: String) -> String {
+    let pkg = package.clone();
+    let mut version = "0";
+
+    if constraint == "*" {
+        return pkg.latest_version;
+    }
+
+    version.to_string()
+}

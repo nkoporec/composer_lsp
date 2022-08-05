@@ -16,6 +16,8 @@ pub struct ComposerFile {
 pub struct ComposerDependency {
     pub name: String,
     pub version: String,
+    pub version_normalized: String,
+    pub version_constraint: String,
     pub line: u32,
 }
 
@@ -46,35 +48,30 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
         let dep_obj = dependencies.as_object().unwrap();
         for (name,version) in dep_obj {
             let line = buffer.get(&name.to_string()).expect("Can't unwrap a line num") - 1;
+
+            // @todo: refactor.
+            let version_normalized = &version.to_string().replace(".", "");
+            let first_version_char = &version_normalized[0..1];
+
+            let mut version_constraint = "";
+            let mut version_normalized_without_prefix = String::new();
+            if composer_constraints_chars().contains(&first_version_char) {
+                version_constraint = first_version_char;
+                version_normalized_without_prefix = version_normalized.replace(first_version_char, "");
+            }
+            // @todo refactor end.
+
             let composer_dependency = ComposerDependency{
                 name: name.to_string(),
-                version: version.to_string().replace("^", ""),
+                version: version.to_string(),
+                version_normalized: version_normalized_without_prefix,
+                version_constraint: version_constraint.to_string(),
                 line
             };
 
             composer_file.dependencies.push(composer_dependency);
         }
     }
-
-    // Calc the lines.
-    // 1. Read line by line to find the 'require' block start and end pos.
-    // 2. loop through the dependcies name and find it within the required block.
-
-    // Get dev dependencies.
-    // @todo.
-    // if parsed_contents_object.contains_key("require-dev") {
-    //     let dependencies = &parsed_contents_object["require-dev"];
-    //     let dep_obj = dependencies.as_object().unwrap();
-    //     for (name,version) in dep_obj {
-    //         let composer_dependency = ComposerDependency{
-    //             name: name.to_string(),
-    //             version: version.to_string(),
-    //             line: 1,
-    //         };
-
-    //         composer_file.dev_dependencies.push(composer_dependency);
-    //     }
-    // }
 
     Some(composer_file)
 }
@@ -113,9 +110,6 @@ fn parse_by_line(filepath: &str) -> HashMap<String, u32> {
     buffer
 }
 
-fn version_constraints(version: String) {
-    // caret
-    if version.contains("^") {
-
-    }
+fn composer_constraints_chars() -> Vec<&'static str> {
+    return vec!["^", "~", ">", "=", "*"];
 }

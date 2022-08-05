@@ -94,14 +94,14 @@ impl Backend {
         for item in composer_file.dependencies {
             // composer.json data.
             let name = item.name.replace(".", "");
-            let version_normalized = item.version.replace(".", "");
+            let version_normalized = item.version_normalized;
 
             // Packagist data.
             let package_data = update_data.get(&name).unwrap();
-            let new_version_normalized = &package_data.latest_version;
+            let new_version_normalized = packagist::get_latest_constraints_version(package_data, item.version_constraint);
 
             // @todo implement version constraints.
-            if new_version_normalized > &version_normalized {
+            if new_version_normalized > version_normalized {
                 let diagnostic = || -> Option<Diagnostic> {
                     Some(Diagnostic::new_simple(
                         Range::new(Position { line: item.line, character: 1}, Position { line: 0, character: 1 }),
