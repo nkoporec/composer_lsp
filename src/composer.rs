@@ -50,11 +50,12 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
             let line = buffer.get(&name.to_string()).expect("Can't unwrap a line num") - 1;
 
             // @todo: refactor.
-            let version_normalized = &version.to_string().replace(".", "");
+            let version_normalized = version.to_string().replace(".", "").replace("\"", "");
             let first_version_char = &version_normalized[0..1];
 
             let mut version_constraint = "";
             let mut version_normalized_without_prefix = String::new();
+
             if composer_constraints_chars().contains(&first_version_char) {
                 version_constraint = first_version_char;
                 version_normalized_without_prefix = version_normalized.replace(first_version_char, "");

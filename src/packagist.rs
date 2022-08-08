@@ -15,7 +15,6 @@ pub struct Package {
 }
 
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
-    log::info!("get_packages_info");
     let client = Client::new();
 
     let bodies = future::join_all(packages.into_iter().map(|package| {
@@ -95,11 +94,10 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
 }
 
 pub fn get_latest_constraints_version(package: &Package, constraint: String) -> String {
-    let pkg = package.clone();
     let mut version = "0";
-
+    
     if constraint == "*" {
-        return pkg.latest_version;
+        version = &package.latest_version;
     }
 
     version.to_string()
