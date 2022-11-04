@@ -1,9 +1,9 @@
 use crate::Url;
+use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{prelude::*, BufReader};
-use serde_json::Value;
-use serde::Deserialize;
 
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct ComposerFile {
@@ -23,7 +23,7 @@ pub struct ComposerDependency {
 
 pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
     let file = Url::parse(&filepath.to_string()).unwrap();
-    let mut composer_file = ComposerFile{
+    let mut composer_file = ComposerFile {
         name: String::new(),
         dependencies: Vec::new(),
         dev_dependencies: Vec::new(),
@@ -33,8 +33,7 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
         return None;
     }
 
-    let contents = fs::read_to_string(file.path())
-        .expect("Error while reading the composer file");
+    let contents = fs::read_to_string(file.path()).expect("Error while reading the composer file");
 
     let parsed_contents: Value = serde_json::from_str(&contents).unwrap();
     let parsed_contents_object = parsed_contents.as_object().unwrap();
@@ -46,8 +45,11 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
     if parsed_contents_object.contains_key("require") {
         let dependencies = &parsed_contents_object["require"];
         let dep_obj = dependencies.as_object().unwrap();
-        for (name,version) in dep_obj {
-            let line = buffer.get(&name.to_string()).expect("Can't unwrap a line num") - 1;
+        for (name, version) in dep_obj {
+            let line = buffer
+                .get(&name.to_string())
+                .expect("Can't unwrap a line num")
+                - 1;
 
             // @todo: refactor.
             let version_normalized = version.to_string().replace(".", "").replace("\"", "");
@@ -58,16 +60,17 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
 
             if composer_constraints_chars().contains(&first_version_char) {
                 version_constraint = first_version_char;
-                version_normalized_without_prefix = version_normalized.replace(first_version_char, "");
+                version_normalized_without_prefix =
+                    version_normalized.replace(first_version_char, "");
             }
             // @todo refactor end.
 
-            let composer_dependency = ComposerDependency{
+            let composer_dependency = ComposerDependency {
                 name: name.to_string(),
                 version: version.to_string(),
                 version_normalized: version_normalized_without_prefix,
                 version_constraint: version_constraint.to_string(),
-                line
+                line,
             };
 
             composer_file.dependencies.push(composer_dependency);
@@ -100,17 +103,19 @@ fn parse_by_line(filepath: &str) -> HashMap<String, u32> {
                 break;
             }
 
-            let dependency_name_delimiter = line_text.find(":").expect("Can't find the dependency name delimiter");
+            let dependency_name_delimiter = line_text
+                .find(":")
+                .expect("Can't find the dependency name delimiter");
             let dependency_name = &line_text[..dependency_name_delimiter].replace(" ", "");
             buffer.insert(dependency_name.to_string().replace("\"", ""), line_num);
         }
 
-        line_num+=1;
+        line_num += 1;
     }
 
     buffer
 }
 
-fn composer_constraints_chars() -> Vec<&'static str> {
+pub fn composer_constraints_chars() -> Vec<&'static str> {
     return vec!["^", "~", ">", "=", "*"];
 }

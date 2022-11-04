@@ -1,8 +1,8 @@
+use futures::{stream, StreamExt};
+use log::LevelFilter;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use log::LevelFilter;
-use futures::{stream, StreamExt};
 
 mod composer;
 mod packagist;
@@ -15,7 +15,7 @@ struct Backend {
 struct TextDocumentItem {
     uri: Url,
     text: String,
-    version: i32
+    version: i32,
 }
 
 const LOG_FILE: &str = "/home/nkoporec/personal/composer_lsp/lsp.log";
@@ -97,12 +97,26 @@ impl Backend {
 
             // Packagist data.
             let package_data = update_data.get(&name).unwrap();
-            let new_version_normalized = packagist::get_latest_constraints_version(package_data, item.version_constraint);
+            let new_version = packagist::get_latest_constraints_version(
+                package_data,
+                item.version_constraint,
+                item.version,
+            );
+            let new_version_normalized = new_version.replace(".", "");
             if new_version_normalized > version_normalized {
                 let diagnostic = || -> Option<Diagnostic> {
                     Some(Diagnostic::new_simple(
-                        Range::new(Position { line: item.line, character: 1}, Position { line: 0, character: 1 }),
-                        format!("Newest update {:?}", new_version_normalized),
+                        Range::new(
+                            Position {
+                                line: item.line,
+                                character: 1,
+                            },
+                            Position {
+                                line: 0,
+                                character: 1,
+                            },
+                        ),
+                        format!("Newest update {:?}", new_version),
                     ))
                 }();
 
@@ -116,7 +130,6 @@ impl Backend {
     }
 }
 
-
 #[tokio::main]
 async fn main() {
     let stdin = tokio::io::stdin();
@@ -124,8 +137,6 @@ async fn main() {
 
     simple_logging::log_to_file(LOG_FILE, LevelFilter::Info);
 
-    let (service, socket) = LspService::build(|client| Backend {
-        client,
-    }).finish();
+    let (service, socket) = LspService::build(|client| Backend { client }).finish();
     Server::new(stdin, stdout, socket).serve(service).await;
 }
