@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use futures::{stream, StreamExt};
 use log::LevelFilter;
 use tower_lsp::jsonrpc::Result;
@@ -89,39 +91,15 @@ impl Backend {
         let composer_file = composer::parse_file(params.uri.clone()).unwrap();
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
-        let mut diagnostics = vec![];
+        let mut diagnostics: Vec<Diagnostic> = vec![];
+
+        // Loop through "require".
         for item in composer_file.dependencies {
-            // composer.json data.
-            let name = item.name.replace(".", "");
-            let version_normalized = item.version_normalized;
-
             // Packagist data.
-            let package_data = update_data.get(&name).unwrap();
-            let new_version = packagist::get_latest_constraints_version(
-                package_data,
-                item.version_constraint,
-                item.version,
-            );
-            let new_version_normalized = new_version.replace(".", "");
-            if new_version_normalized > version_normalized {
-                let diagnostic = || -> Option<Diagnostic> {
-                    Some(Diagnostic::new_simple(
-                        Range::new(
-                            Position {
-                                line: item.line,
-                                character: 1,
-                            },
-                            Position {
-                                line: 0,
-                                character: 1,
-                            },
-                        ),
-                        format!("Newest update {:?}", new_version),
-                    ))
-                }();
+            let packagist_data = update_data.get(&item.name).unwrap();
 
-                diagnostics.push(diagnostic.unwrap());
-            }
+            let new_version =
+                packagist::get_latest_constraint_version(packagist_data, item.version_constraint);
         }
 
         self.client
