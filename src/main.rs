@@ -99,8 +99,35 @@ impl Backend {
             // Packagist data.
             let packagist_data = update_data.get(&item.name).unwrap();
 
-            let need_update =
-                packagist::check_for_package_update(packagist_data, item.version_constraint);
+            self.client
+                .log_message(
+                    MessageType::ERROR,
+                    format!("test version: {:?}", packagist_data.versions),
+                )
+                .await;
+
+            if let Some(version) =
+                packagist::check_for_package_update(packagist_data, item.version.replace("\"", ""))
+            {
+                let diagnostic = || -> Option<Diagnostic> {
+                    Some(Diagnostic::new_simple(
+                        Range::new(
+                            Position {
+                                line: item.line,
+                                character: 1,
+                            },
+                            Position {
+                                line: 0,
+                                character: 1,
+                            },
+                        ),
+                        format!("Newest update {:?}", version),
+                    ))
+                }();
+
+                diagnostics.push(diagnostic.unwrap());
+            } else {
+            }
         }
 
         self.client

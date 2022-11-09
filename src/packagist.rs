@@ -5,6 +5,7 @@ use reqwest::Result;
 use semver::{Version, VersionReq};
 use serde_json::Value;
 use std::collections::HashMap;
+use tower_lsp::Client as ClientTower;
 
 const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 
@@ -45,7 +46,7 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                         .as_str()
                         .unwrap();
 
-                    package_struct.versions.push(version.to_string());
+                    package_struct.versions.push(version[0..5].to_string());
                 }
             }
 
@@ -72,21 +73,35 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
 }
 
 pub fn check_for_package_update(package: &Package, constraint: String) -> Option<&str> {
-    let req = VersionReq::parse(&constraint).unwrap();
-    let mut matching_versions = vec![];
+    let req = VersionReq::parse(&constraint[..]);
 
-    for ver in package.versions.iter() {
-        if req.matches(&Version::parse(&ver).unwrap()) {
-            matching_versions.push(ver);
+    match req {
+        Ok(req) => {
+            let mut matching_versions = vec![];
+
+            for ver in package.versions.iter() {
+                let parsed_version = &Version::parse(&ver);
+
+                match parsed_version {
+                    Ok(parsed_version) => {
+                        if req.matches(parsed_version) {
+                            matching_versions.push(ver);
+                        }
+                    }
+                    Err(error) => panic!("{}", error),
+                }
+            }
+
+            if matching_versions.len() <= 0 {
+                return None;
+            }
+
+            return Some(matching_versions.first().unwrap());
         }
+        Err(_error) => None,
     }
-
-    if matching_versions.len() <= 0 {
-        return None;
-    }
-
-    return Some(matching_versions.first().unwrap());
 }
+
 #[cfg(test)]
 mod tests {
     use crate::packagist::{check_for_package_update, Package};
