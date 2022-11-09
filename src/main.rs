@@ -2,6 +2,7 @@ use std::fmt::format;
 
 use futures::{stream, StreamExt};
 use log::LevelFilter;
+use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -98,8 +99,8 @@ impl Backend {
             // Packagist data.
             let packagist_data = update_data.get(&item.name).unwrap();
 
-            let new_version =
-                packagist::get_latest_constraint_version(packagist_data, item.version_constraint);
+            let need_update =
+                packagist::check_for_package_update(packagist_data, item.version_constraint);
         }
 
         self.client

@@ -1,8 +1,8 @@
-use crate::composer;
 use crate::composer::ComposerDependency;
 use futures::future; // 0.3.4
 use reqwest::Client; // 0.10.6
 use reqwest::Result;
+use semver::{Version, VersionReq};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -11,52 +11,7 @@ const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 #[derive(Debug)]
 pub struct Package {
     pub name: String,
-    pub latest_version: String,
-    pub versions: HashMap<i32, Vec<String>>,
-}
-
-enum VersionChar {
-    Greater,
-    GreaterOrEqual,
-    Lesser,
-    LesserOrEqual,
-    Equal,
-    NotSame,
-    LogicalAnd,
-    LogicalOr,
-}
-
-enum ConstraintChar {
-    Hyphen,
-    Wildcard,
-    Tilde,
-    Caret,
-}
-
-impl ConstraintChar {
-    fn as_str(&self) -> &'static str {
-        match self {
-            ConstraintChar::Hyphen => "-",
-            ConstraintChar::Wildcard => "*",
-            ConstraintChar::Tilde => "~",
-            ConstraintChar::Caret => ">",
-        }
-    }
-}
-
-impl VersionChar {
-    fn as_str(&self) -> &'static str {
-        match self {
-            VersionChar::Greater => ">",
-            VersionChar::GreaterOrEqual => ">=",
-            VersionChar::Lesser => "<",
-            VersionChar::LesserOrEqual => "<=",
-            VersionChar::Equal => "=",
-            VersionChar::NotSame => "!=",
-            VersionChar::LogicalAnd => "||",
-            VersionChar::LogicalOr => "&&",
-        }
-    }
+    pub versions: Vec<String>,
 }
 
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
@@ -73,8 +28,7 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
 
             let mut package_struct = Package {
                 name: package.name,
-                latest_version: String::new(),
-                versions: HashMap::new(),
+                versions: vec![],
             };
 
             let packages = contents.as_object().unwrap().get("packages");
@@ -91,29 +45,7 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                         .as_str()
                         .unwrap();
 
-                    let version_split: Vec<&str> = version.split(".").collect();
-                    // 2
-                    let version_major = version_split.get(0).cloned().unwrap();
-                    let version_major_int = version_major.parse::<i32>().unwrap();
-                    // Either Some or None.
-                    // If none, create a new vec.
-                    let mut existing = package_struct.versions.get(&version_major_int).cloned();
-                    if existing.is_none() {
-                        existing = Some(vec![]);
-                    }
-                    let mut existing_vec = existing.unwrap();
-
-                    // 2110
-                    existing_vec.push(version.to_string().clone());
-
-                    package_struct
-                        .versions
-                        .insert(version_major_int, existing_vec.to_vec());
-
-                    // Get the latest version.
-                    if &version.to_string() > &package_struct.latest_version {
-                        package_struct.latest_version = version.to_string();
-                    }
+                    package_struct.versions.push(version.to_string());
                 }
             }
 
@@ -139,105 +71,96 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
     return hashmap;
 }
 
-pub fn get_latest_constraint_version(package: &Package, constraint: String) -> &str {
-    let or = constraint.find(VersionChar::LogicalOr.as_str());
-    if or != None {
-        todo!();
-    }
+pub fn check_for_package_update(package: &Package, constraint: String) -> Option<&str> {
+    let req = VersionReq::parse(&constraint).unwrap();
+    let mut matching_versions = vec![];
 
-    let and = constraint.find(VersionChar::LogicalAnd.as_str());
-    if and != None {
-        todo!()
-    }
-
-    let first_constraint_char = &constraint[0..1];
-    match first_constraint_char {
-        // *
-        // *.1.0
-        "*" => {
-            if constraint.len() == 1 {
-                let mut latest_major_version = 0;
-                for (key, i) in package.versions.iter() {
-                    if key > &latest_major_version {
-                        latest_major_version = *key;
-                    }
-                }
-
-                let latest_major_versions = package.versions.get(&latest_major_version).unwrap();
-
-                return latest_major_versions.first().unwrap();
-            }
-
-            todo!();
+    for ver in package.versions.iter() {
+        if req.matches(&Version::parse(&ver).unwrap()) {
+            matching_versions.push(ver);
         }
-        // ^1.0
-        "^" => todo!(),
-        // ~1.3.1
-        // ~1.5
-        "~" => todo!(),
-        // 1.3.1
-        // 1.3.*
-        // 1.*.*
-        _ => todo!(),
-    };
+    }
 
-    "1"
+    if matching_versions.len() <= 0 {
+        return None;
+    }
+
+    return Some(matching_versions.first().unwrap());
 }
-
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use crate::packagist::{get_latest_constraint_version, Package};
+    use crate::packagist::{check_for_package_update, Package};
 
     fn get_package_mock() -> Package {
         let package_data = Package {
             name: "Test".to_string(),
-            latest_version: "2.1".to_string(),
-            versions: HashMap::from([
-                (
-                    2,
-                    vec![
-                        String::from("2.2"),
-                        String::from("2.1"),
-                        String::from("2.0"),
-                    ],
-                ),
-                (
-                    1,
-                    vec![
-                        String::from("1.4"),
-                        String::from("1.3"),
-                        String::from("1.2"),
-                    ],
-                ),
-            ]),
+            versions: vec![
+                String::from("2.2.1"),
+                String::from("2.1.1"),
+                String::from("2.1.0"),
+                String::from("2.0.0"),
+                String::from("1.9.0"),
+                String::from("1.8.1"),
+                String::from("1.8.0"),
+            ],
         };
 
         package_data
     }
 
     #[test]
+    fn it_can_get_a_correct_caret_version() {
+        assert_eq!(
+            "1.9.0",
+            check_for_package_update(&get_package_mock(), "^1.0".to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn it_can_get_a_correct_higher_version() {
+        assert_eq!(
+            "2.2.1",
+            check_for_package_update(&get_package_mock(), ">2.0".to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn it_can_get_a_correct_higher_or_equal_version() {
+        assert_eq!(
+            "2.2.1",
+            check_for_package_update(&get_package_mock(), ">=2.0".to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn it_can_get_a_correct_lower_or_equal_version() {
+        assert_eq!(
+            "2.0.0",
+            check_for_package_update(&get_package_mock(), "<=2.0".to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn it_can_get_a_correct_lower_version() {
+        assert_eq!(
+            "2.1.1",
+            check_for_package_update(&get_package_mock(), "<=2.1".to_string()).unwrap()
+        );
+    }
+
+    #[test]
     fn it_can_get_a_correct_latest_version() {
         assert_eq!(
-            "2.2",
-            get_latest_constraint_version(&get_package_mock(), "*".to_string())
+            "2.2.1",
+            check_for_package_update(&get_package_mock(), "*".to_string()).unwrap()
         );
     }
 
     #[test]
-    fn it_can_get_a_correct_latest_with_wildcard() {
+    fn it_can_get_a_correct_tilde_version() {
         assert_eq!(
-            "2.1",
-            get_latest_constraint_version(&get_package_mock(), "*.1".to_string())
-        );
-    }
-
-    #[test]
-    fn it_can_get_a_correct_fixed_version() {
-        assert_eq!(
-            "2.1",
-            get_latest_constraint_version(&get_package_mock(), "2.1".to_string())
+            "1.8.1",
+            check_for_package_update(&get_package_mock(), "~1.8".to_string()).unwrap()
         );
     }
 }
