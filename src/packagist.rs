@@ -89,7 +89,7 @@ pub fn check_for_package_update(package: &Package, constraint: String) -> Option
                             matching_versions.push(ver);
                         }
                     }
-                    Err(error) => panic!("{}", error),
+                    Err(_error) => {}
                 }
             }
 

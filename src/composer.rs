@@ -16,8 +16,6 @@ pub struct ComposerFile {
 pub struct ComposerDependency {
     pub name: String,
     pub version: String,
-    pub version_normalized: String,
-    pub version_constraint: String,
     pub line: u32,
 }
 
@@ -35,9 +33,16 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
 
     let contents = fs::read_to_string(file.path()).expect("Error while reading the composer file");
 
-    let parsed_contents: Value = serde_json::from_str(&contents).unwrap();
-    let parsed_contents_object = parsed_contents.as_object().unwrap();
+    let parsed_contents: Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        _ => Value::Null,
+    };
 
+    if parsed_contents.is_null() {
+        return None;
+    }
+
+    let parsed_contents_object = parsed_contents.as_object().unwrap();
     // Parse line numbers.
     let buffer = parse_by_line(file.path());
 
@@ -51,25 +56,9 @@ pub fn parse_file(filepath: Url) -> Option<ComposerFile> {
                 .expect("Can't unwrap a line num")
                 - 1;
 
-            // @todo: refactor.
-            let version_normalized = version.to_string().replace(".", "").replace("\"", "");
-            let first_version_char = &version_normalized[0..1];
-
-            let mut version_constraint = "";
-            let mut version_normalized_without_prefix = String::new();
-
-            if composer_constraints_chars().contains(&first_version_char) {
-                version_constraint = first_version_char;
-                version_normalized_without_prefix =
-                    version_normalized.replace(first_version_char, "");
-            }
-            // @todo refactor end.
-
             let composer_dependency = ComposerDependency {
                 name: name.to_string(),
                 version: version.to_string(),
-                version_normalized: version_normalized_without_prefix,
-                version_constraint: version_constraint.to_string(),
                 line,
             };
 
@@ -114,8 +103,4 @@ fn parse_by_line(filepath: &str) -> HashMap<String, u32> {
     }
 
     buffer
-}
-
-pub fn composer_constraints_chars() -> Vec<&'static str> {
-    return vec!["^", "~", ">", "=", "*"];
 }

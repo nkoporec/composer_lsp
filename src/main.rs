@@ -2,6 +2,8 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
+use crate::composer::ComposerFile;
+
 mod composer;
 mod packagist;
 
@@ -38,7 +40,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "composer server initialized!")
+            .log_message(MessageType::INFO, "composer_lsp initialized!")
             .await;
     }
 
@@ -46,40 +48,24 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
-    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-        self.client
-            .log_message(MessageType::INFO, "file opened!")
-            .await;
-    }
-
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.client
-            .log_message(MessageType::INFO, "file opened!")
-            .await;
-
-        self.on_change(TextDocumentItem {
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        self.on_save(TextDocumentItem {
             uri: params.text_document.uri,
-            version: params.text_document.version,
-        })
-        .await
-    }
-
-    async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.client
-            .log_message(MessageType::INFO, "file changed!")
-            .await;
-
-        self.on_change(TextDocumentItem {
-            uri: params.text_document.uri,
-            version: params.text_document.version,
+            version: 1,
         })
         .await
     }
 }
 
 impl Backend {
-    async fn on_change(&self, params: TextDocumentItem) {
-        let composer_file = composer::parse_file(params.uri.clone()).unwrap();
+    async fn on_save(&self, params: TextDocumentItem) {
+        let composer_file =
+            composer::parse_file(params.uri.clone()).unwrap_or_else(|| ComposerFile {
+                name: "".to_string(),
+                dependencies: vec![],
+                dev_dependencies: vec![],
+            });
+
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
         let mut diagnostics: Vec<Diagnostic> = vec![];
