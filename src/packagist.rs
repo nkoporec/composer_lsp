@@ -5,7 +5,6 @@ use reqwest::Result;
 use semver::{Version, VersionReq};
 use serde_json::Value;
 use std::collections::HashMap;
-use tower_lsp::Client as ClientTower;
 
 const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 
@@ -41,12 +40,14 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                     let version = item_version
                         .as_object()
                         .unwrap()
-                        .get("version_normalized")
+                        .get("version")
                         .unwrap()
                         .as_str()
                         .unwrap();
 
-                    package_struct.versions.push(version[0..5].to_string());
+                    package_struct
+                        .versions
+                        .push(version.to_string().replace("v", ""));
                 }
             }
 

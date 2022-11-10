@@ -1,8 +1,3 @@
-use std::fmt::format;
-
-use futures::{stream, StreamExt};
-use log::LevelFilter;
-use semver::{BuildMetadata, Prerelease, Version, VersionReq};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -17,11 +12,8 @@ struct Backend {
 
 struct TextDocumentItem {
     uri: Url,
-    text: String,
     version: i32,
 }
-
-const LOG_FILE: &str = "/home/nkoporec/personal/composer_lsp/lsp.log";
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
@@ -54,7 +46,7 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
-    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
         self.client
             .log_message(MessageType::INFO, "file opened!")
             .await;
@@ -67,20 +59,18 @@ impl LanguageServer for Backend {
 
         self.on_change(TextDocumentItem {
             uri: params.text_document.uri,
-            text: params.text_document.text,
             version: params.text_document.version,
         })
         .await
     }
 
-    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
         self.client
             .log_message(MessageType::INFO, "file changed!")
             .await;
 
         self.on_change(TextDocumentItem {
             uri: params.text_document.uri,
-            text: std::mem::take(&mut params.content_changes[0].text),
             version: params.text_document.version,
         })
         .await
@@ -99,18 +89,11 @@ impl Backend {
             // Packagist data.
             let packagist_data = update_data.get(&item.name).unwrap();
 
-            self.client
-                .log_message(
-                    MessageType::ERROR,
-                    format!("test version: {:?}", packagist_data.versions),
-                )
-                .await;
+            let version = item.version.replace("\"", "");
 
-            if let Some(version) =
-                packagist::check_for_package_update(packagist_data, item.version.replace("\"", ""))
-            {
+            if let Some(version) = packagist::check_for_package_update(packagist_data, version) {
                 let diagnostic = || -> Option<Diagnostic> {
-                    Some(Diagnostic::new_simple(
+                    Some(Diagnostic::new(
                         Range::new(
                             Position {
                                 line: item.line,
@@ -121,7 +104,12 @@ impl Backend {
                                 character: 1,
                             },
                         ),
-                        format!("Newest update {:?}", version),
+                        Some(DiagnosticSeverity::WARNING),
+                        None,
+                        None,
+                        format!("Update available: {:?}", version),
+                        None,
+                        None,
                     ))
                 }();
 
@@ -140,8 +128,6 @@ impl Backend {
 async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-
-    simple_logging::log_to_file(LOG_FILE, LevelFilter::Info);
 
     let (service, socket) = LspService::build(|client| Backend { client }).finish();
     Server::new(stdin, stdout, socket).serve(service).await;
