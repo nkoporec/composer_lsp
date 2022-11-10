@@ -71,6 +71,7 @@ impl Backend {
         let mut diagnostics: Vec<Diagnostic> = vec![];
 
         // Loop through "require".
+        // @todo make it work for dev_dependencies.
         for item in composer_file.dependencies {
             // Packagist data.
             let packagist_data = update_data.get(&item.name).unwrap();
@@ -100,7 +101,6 @@ impl Backend {
                 }();
 
                 diagnostics.push(diagnostic.unwrap());
-            } else {
             }
         }
 
