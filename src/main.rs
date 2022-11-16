@@ -1,8 +1,12 @@
+use log::{info, LevelFilter};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::composer::ComposerFile;
+use crate::composer::{ComposerFile, ComposerLock};
+
+use simplelog::*;
+use std::{collections::HashMap, fs::File};
 
 mod composer;
 mod packagist;
@@ -19,7 +23,7 @@ struct TextDocumentItem {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             server_info: None,
             capabilities: ServerCapabilities {
@@ -60,11 +64,19 @@ impl LanguageServer for Backend {
 impl Backend {
     async fn on_save(&self, params: TextDocumentItem) {
         let composer_file =
-            composer::parse_file(params.uri.clone()).unwrap_or_else(|| ComposerFile {
-                name: "".to_string(),
+            composer::parse_json_file(params.uri.clone()).unwrap_or_else(|| ComposerFile {
+                path: "".to_string(),
                 dependencies: vec![],
                 dev_dependencies: vec![],
             });
+
+        let mut composer_lock = ComposerLock {
+            versions: HashMap::new(),
+        };
+
+        if composer_file.path != "" {
+            composer_lock = composer::parse_lock_file(&composer_file).unwrap();
+        }
 
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
@@ -75,10 +87,19 @@ impl Backend {
         for item in composer_file.dependencies {
             // Packagist data.
             let packagist_data = update_data.get(&item.name).unwrap();
+            let mut composer_lock_version = "".to_string();
 
-            let version = item.version.replace("\"", "");
+            let composer_json_version = item.version.replace("\"", "");
+            if composer_lock.versions.len() > 0 {
+                let installed_package = composer_lock.versions.get(&item.name).unwrap();
+                composer_lock_version = installed_package.version.clone();
+            }
 
-            if let Some(version) = packagist::check_for_package_update(packagist_data, version) {
+            if let Some(version) = packagist::check_for_package_update(
+                packagist_data,
+                composer_json_version,
+                composer_lock_version,
+            ) {
                 let diagnostic = || -> Option<Diagnostic> {
                     Some(Diagnostic::new(
                         Range::new(

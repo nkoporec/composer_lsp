@@ -73,10 +73,14 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
     return hashmap;
 }
 
-pub fn check_for_package_update(package: &Package, constraint: String) -> Option<&str> {
-    let req = VersionReq::parse(&constraint[..]);
+pub fn check_for_package_update(
+    package: &Package,
+    constraint: String,
+    installed: String,
+) -> Option<&str> {
+    let version_constraint = VersionReq::parse(&constraint[..]);
 
-    match req {
+    match version_constraint {
         Ok(req) => {
             let mut matching_versions = vec![];
 
@@ -97,10 +101,54 @@ pub fn check_for_package_update(package: &Package, constraint: String) -> Option
                 return None;
             }
 
-            return Some(matching_versions.first().unwrap());
+            if installed == "" {
+                return Some(matching_versions.first().unwrap());
+            }
+
+            let installed_normalized = installed.replace(".", "");
+            let installed_as_int = installed_normalized.parse::<i32>().unwrap();
+            let mut matching = vec![];
+
+            for i in matching_versions.into_iter() {
+                let i_normalized = i.replace(".", "");
+                let i_as_int = i_normalized.parse::<i32>().unwrap();
+
+                if i_as_int > installed_as_int {
+                    matching.push(i);
+                }
+            }
+
+            if matching.len() <= 0 {
+                return None;
+            }
+
+            return Some(matching.first().unwrap());
         }
         Err(_error) => None,
     }
+}
+
+fn parse_or_constraint(package: &Package, constraint: String, installed: String) -> String {
+    let split: Vec<String> = constraint
+        .split("||")
+        .map(|s| s.to_string().replace("||", "").replace(" ", ""))
+        .collect();
+
+    let mut versions = vec![];
+    for item in split {
+        let version = check_for_package_update(package, item.clone(), installed.clone());
+        versions.push(version);
+    }
+
+    let mut result = "".to_string();
+    for a in versions {
+        match a {
+            Some(ver) => result.push_str(ver),
+            None => {}
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -127,56 +175,93 @@ mod tests {
     #[test]
     fn it_can_get_a_correct_caret_version() {
         assert_eq!(
-            "1.9.0",
-            check_for_package_update(&get_package_mock(), "^1.0".to_string()).unwrap()
+            Some("1.9.0"),
+            check_for_package_update(&get_package_mock(), "^1.0".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_higher_version() {
         assert_eq!(
-            "2.2.1",
-            check_for_package_update(&get_package_mock(), ">2.0".to_string()).unwrap()
+            Some("2.2.1"),
+            check_for_package_update(&get_package_mock(), ">2.0".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_higher_or_equal_version() {
         assert_eq!(
-            "2.2.1",
-            check_for_package_update(&get_package_mock(), ">=2.0".to_string()).unwrap()
+            Some("2.2.1"),
+            check_for_package_update(&get_package_mock(), ">=2.0".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_lower_or_equal_version() {
         assert_eq!(
-            "2.0.0",
-            check_for_package_update(&get_package_mock(), "<=2.0".to_string()).unwrap()
+            Some("2.0.0"),
+            check_for_package_update(&get_package_mock(), "<=2.0".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_lower_version() {
         assert_eq!(
-            "2.1.1",
-            check_for_package_update(&get_package_mock(), "<=2.1".to_string()).unwrap()
+            Some("2.1.1"),
+            check_for_package_update(&get_package_mock(), "<=2.1".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_latest_version() {
         assert_eq!(
-            "2.2.1",
-            check_for_package_update(&get_package_mock(), "*".to_string()).unwrap()
+            Some("2.2.1"),
+            check_for_package_update(&get_package_mock(), "*".to_string(), "".to_string())
         );
     }
 
     #[test]
     fn it_can_get_a_correct_tilde_version() {
         assert_eq!(
-            "1.8.1",
-            check_for_package_update(&get_package_mock(), "~1.8".to_string()).unwrap()
+            Some("1.8.1"),
+            check_for_package_update(&get_package_mock(), "~1.8".to_string(), "".to_string())
+        );
+    }
+
+    #[test]
+    fn it_can_get_a_correct_latest_version_with_installed_lower_version() {
+        assert_eq!(
+            Some("2.2.1"),
+            check_for_package_update(&get_package_mock(), "^2.0".to_string(), "2.1.0".to_string())
+        );
+    }
+
+    #[test]
+    fn it_wont_get_anything_if_latest_is_installed_and_major_is_lower() {
+        assert_eq!(
+            None,
+            check_for_package_update(&get_package_mock(), "^1.0".to_string(), "2.2.0".to_string())
+        );
+    }
+
+    // @todo Not yet working.
+    // #[test]
+    // fn it_can_get_a_correct_version_if_and_constraint_is_used() {
+    //     assert_eq!(
+    //         Some("2.2.0"),
+    //         check_for_package_update(
+    //             &get_package_mock(),
+    //             "^2.1.0 || ^2.2.0".to_string(),
+    //             "2.1.0".to_string()
+    //         )
+    //     );
+    // }
+
+    #[test]
+    fn it_wont_get_anything_if_latest_is_installed() {
+        assert_eq!(
+            None,
+            check_for_package_update(&get_package_mock(), "^2.0".to_string(), "2.2.1".to_string())
         );
     }
 }
