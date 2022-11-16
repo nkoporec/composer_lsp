@@ -91,8 +91,11 @@ impl Backend {
 
             let composer_json_version = item.version.replace("\"", "");
             if composer_lock.versions.len() > 0 {
-                let installed_package = composer_lock.versions.get(&item.name).unwrap();
-                composer_lock_version = installed_package.version.clone();
+                let installed_package = composer_lock.versions.get(&item.name);
+                match installed_package {
+                    Some(installed) => composer_lock_version = installed.version.clone(),
+                    None => {}
+                }
             }
 
             if let Some(version) = packagist::check_for_package_update(
