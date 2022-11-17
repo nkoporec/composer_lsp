@@ -12,7 +12,7 @@ pub struct ComposerFile {
     pub dev_dependencies: Vec<ComposerDependency>,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct ComposerLock {
     pub versions: HashMap<String, InstalledPackage>,
 }
