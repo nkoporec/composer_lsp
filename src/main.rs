@@ -83,48 +83,56 @@ impl Backend {
         let mut diagnostics: Vec<Diagnostic> = vec![];
 
         // Loop through "require".
-        // @todo make it work for dev_dependencies.
         for item in composer_file.dependencies {
-            // Packagist data.
-            let packagist_data = update_data.get(&item.name).unwrap();
-            let mut composer_lock_version = "".to_string();
-
-            let composer_json_version = item.version.replace("\"", "");
-            if composer_lock.versions.len() > 0 {
-                let installed_package = composer_lock.versions.get(&item.name);
-                match installed_package {
-                    Some(installed) => composer_lock_version = installed.version.clone(),
-                    None => {}
-                }
+            if item.name == "" {
+                continue;
             }
 
-            if let Some(version) = packagist::check_for_package_update(
-                packagist_data,
-                composer_json_version,
-                composer_lock_version,
-            ) {
-                let diagnostic = || -> Option<Diagnostic> {
-                    Some(Diagnostic::new(
-                        Range::new(
-                            Position {
-                                line: item.line,
-                                character: 1,
-                            },
-                            Position {
-                                line: 0,
-                                character: 1,
-                            },
-                        ),
-                        Some(DiagnosticSeverity::WARNING),
-                        None,
-                        None,
-                        format!("Update available: {:?}", version),
-                        None,
-                        None,
-                    ))
-                }();
+            // Packagist data.
+            let packagist_data = update_data.get(&item.name);
+            match packagist_data {
+                Some(package) => {
+                    let mut composer_lock_version = "".to_string();
 
-                diagnostics.push(diagnostic.unwrap());
+                    let composer_json_version = item.version.replace("\"", "");
+                    if composer_lock.versions.len() > 0 {
+                        let installed_package = composer_lock.versions.get(&item.name);
+                        match installed_package {
+                            Some(installed) => composer_lock_version = installed.version.clone(),
+                            None => {}
+                        }
+                    }
+
+                    if let Some(version) = packagist::check_for_package_update(
+                        package,
+                        composer_json_version,
+                        composer_lock_version,
+                    ) {
+                        let diagnostic = || -> Option<Diagnostic> {
+                            Some(Diagnostic::new(
+                                Range::new(
+                                    Position {
+                                        line: item.line,
+                                        character: 1,
+                                    },
+                                    Position {
+                                        line: 0,
+                                        character: 1,
+                                    },
+                                ),
+                                Some(DiagnosticSeverity::WARNING),
+                                None,
+                                None,
+                                format!("Update available: {:?}", version),
+                                None,
+                                None,
+                            ))
+                        }();
+
+                        diagnostics.push(diagnostic.unwrap());
+                    }
+                }
+                None => {}
             }
         }
 

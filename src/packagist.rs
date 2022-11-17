@@ -24,35 +24,44 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
             let resp = client.get(url).send().await?;
             let text = resp.text().await;
 
-            let contents: Value = serde_json::from_str(&text.unwrap()).unwrap();
+            let contents: Value = serde_json::from_str(&text.unwrap()).unwrap_or(Value::Null);
 
-            let mut package_struct = Package {
-                name: package.name,
+            if !contents.is_null() {
+                let mut package_struct = Package {
+                    name: package.name,
+                    versions: vec![],
+                };
+
+                let packages = contents.as_object().unwrap().get("packages");
+                let packages_data = packages.unwrap().as_object().unwrap();
+                for (_, data) in packages_data.into_iter() {
+                    let package_versions = data.as_array().unwrap();
+
+                    for item_version in package_versions {
+                        let version = item_version
+                            .as_object()
+                            .unwrap()
+                            .get("version")
+                            .unwrap()
+                            .as_str()
+                            .unwrap();
+
+                        package_struct
+                            .versions
+                            .push(version.to_string().replace("v", ""));
+                    }
+                }
+
+                let result: Result<Package> = Ok(package_struct);
+                return result;
+            }
+
+            let empty_package = Package {
+                name: "".to_string(),
                 versions: vec![],
             };
 
-            let packages = contents.as_object().unwrap().get("packages");
-            let packages_data = packages.unwrap().as_object().unwrap();
-            for (_, data) in packages_data.into_iter() {
-                let package_versions = data.as_array().unwrap();
-
-                for item_version in package_versions {
-                    let version = item_version
-                        .as_object()
-                        .unwrap()
-                        .get("version")
-                        .unwrap()
-                        .as_str()
-                        .unwrap();
-
-                    package_struct
-                        .versions
-                        .push(version.to_string().replace("v", ""));
-                }
-            }
-
-            let result: Result<Package> = Ok(package_struct);
-            result
+            Ok(empty_package)
         }
     }))
     .await;
