@@ -19,7 +19,9 @@
         "monolog/monolog": "^2.0"
     },
     "require-dev": {
-        "composer/installers": "^2.0"
+        "composer/installers": "^2.0",
+        "monolog/monolog": "^2.0",
+        "drupal/core": "^8.0"
     },
     "config": {
         "preferred-install": "dist",
