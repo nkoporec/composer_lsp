@@ -1,11 +1,12 @@
-use log::{info, LevelFilter};
+use log::{error, info, warn};
+use log4rs;
+use std::env;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::composer::{ComposerFile, ComposerLock};
 
-use simplelog::*;
 use std::{collections::HashMap, fs::File};
 
 mod composer;
@@ -144,6 +145,14 @@ impl Backend {
 
 #[tokio::main]
 async fn main() {
+    match env::var("COMPOSER_LSP_LOG") {
+        Ok(value) => {
+            log4rs::init_file(value, Default::default()).unwrap();
+            info!("LOG4RS logging enabled")
+        }
+        Err(_error) => {}
+    }
+
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
