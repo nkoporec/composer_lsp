@@ -1,6 +1,6 @@
-use crate::{packagist, Url};
+use crate::Url;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{prelude::*, BufReader};
@@ -32,9 +32,10 @@ pub struct InstalledPackage {
 
 #[derive(Deserialize, Debug)]
 struct ComposerJsonFile {
+    #[serde(default)]
     require: HashMap<String, String>,
 
-    #[serde(rename(deserialize = "require-dev"))]
+    #[serde(rename(deserialize = "require-dev"), default)]
     require_dev: HashMap<String, String>,
 }
 
