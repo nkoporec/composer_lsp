@@ -1,4 +1,5 @@
 use crate::Url;
+use log::{info, warn};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -70,7 +71,9 @@ pub fn parse_json_file(filepath: Url) -> Option<ComposerFile> {
 
                 composer_file.dependencies.push(composer_dependency);
             }
-            None => {}
+            None => {
+                info!("Can't get a line number for dependency {}", name);
+            }
         }
     }
 
@@ -88,7 +91,9 @@ pub fn parse_json_file(filepath: Url) -> Option<ComposerFile> {
 
                 composer_file.dev_dependencies.push(composer_dependency);
             }
-            None => {}
+            None => {
+                info!("Can't get a line number for dev-dependency {}", name);
+            }
         }
     }
 
@@ -110,7 +115,10 @@ pub fn parse_lock_file(composer_file: &ComposerFile) -> Option<ComposerLock> {
 
             let parsed_contents: Value = match serde_json::from_str(&contents) {
                 Ok(v) => v,
-                _ => Value::Null,
+                Err(error) => {
+                    warn!("Error while prasing lock file: {}", error);
+                    Value::Null
+                }
             };
 
             if parsed_contents.is_null() {

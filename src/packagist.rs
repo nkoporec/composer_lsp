@@ -1,8 +1,11 @@
 use crate::composer::ComposerDependency;
-use futures::future; // 0.3.4
+use futures::future;
+use log::info;
+// 0.3.4
 use reqwest::Client; // 0.10.6
 use reqwest::Result;
 use semver::{Version, VersionReq};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -32,28 +35,54 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                     versions: vec![],
                 };
 
-                let packages = contents.as_object().unwrap().get("packages");
-                let packages_data = packages.unwrap().as_object().unwrap();
-                for (_, data) in packages_data.into_iter() {
-                    let package_versions = data.as_array().unwrap();
+                match contents.as_object() {
+                    Some(contents_data) => {
+                        let contents_packages_object = contents_data.get("packages");
+                        match contents_packages_object {
+                            Some(contents_packages) => {
+                                let package_data =
+                                    contents_packages.get(package_struct.name.clone());
+                                match package_data {
+                                    Some(data) => match data.as_array() {
+                                        Some(data_array) => {
+                                            for item in data_array {
+                                                let version = item
+                                                    .as_object()
+                                                    .unwrap()
+                                                    .get("version")
+                                                    .expect("Can't get the version string")
+                                                    .as_str()
+                                                    .unwrap();
 
-                    for item_version in package_versions {
-                        let version = item_version
-                            .as_object()
-                            .unwrap()
-                            .get("version")
-                            .unwrap()
-                            .as_str()
-                            .unwrap();
+                                                package_struct
+                                                    .versions
+                                                    .push(version.to_string().replace("v", ""));
+                                            }
+                                        }
+                                        None => {
+                                            info!(
+                                                "Can't turn package data to array for {}",
+                                                package_struct.name
+                                            );
+                                        }
+                                    },
+                                    None => {
+                                        info!("Can't get package data for {}", package_struct.name);
+                                    }
+                                }
+                            }
+                            None => {
+                                info!("Can't get packages array for {}", package_struct.name)
+                            }
+                        }
 
-                        package_struct
-                            .versions
-                            .push(version.to_string().replace("v", ""));
+                        let result: Result<Package> = Ok(package_struct);
+                        return result;
+                    }
+                    None => {
+                        info!("Can't fetch Packagist data for {}", package_struct.name)
                     }
                 }
-
-                let result: Result<Package> = Ok(package_struct);
-                return result;
             }
 
             let empty_package = Package {
