@@ -76,7 +76,14 @@ impl Backend {
         };
 
         if composer_file.path != "" {
-            composer_lock = composer::parse_lock_file(&composer_file).unwrap();
+            match composer::parse_lock_file(&composer_file) {
+                Some(lock) => {
+                    composer_lock = lock;
+                }
+                None => {
+                    info!("No lock file present.")
+                }
+            }
         }
 
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;

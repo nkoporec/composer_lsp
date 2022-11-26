@@ -31,7 +31,7 @@ pub struct InstalledPackage {
     pub version: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct ComposerJsonFile {
     #[serde(default)]
     require: HashMap<String, String>,
@@ -55,7 +55,7 @@ pub fn parse_json_file(filepath: Url) -> Option<ComposerFile> {
     let file_open = File::open(file.path().to_string()).unwrap();
     let mut reader = BufReader::new(file_open);
     let composer_json_parsed: ComposerJsonFile =
-        serde_json::from_reader(&mut reader).expect("Can't parse the composer json");
+        serde_json::from_reader(&mut reader).unwrap_or_default();
 
     // Get dependencies.
     for (name, version) in composer_json_parsed.require {
@@ -66,7 +66,8 @@ pub fn parse_json_file(filepath: Url) -> Option<ComposerFile> {
                 let composer_dependency = ComposerDependency {
                     name: name.to_string(),
                     version: version.to_string(),
-                    line: num,
+                    // @todo figure out why we need to do this.
+                    line: num - 1,
                 };
 
                 composer_file.dependencies.push(composer_dependency);
@@ -110,60 +111,71 @@ pub fn parse_lock_file(composer_file: &ComposerFile) -> Option<ComposerLock> {
                 versions: HashMap::new(),
             };
 
-            let contents =
-                fs::read_to_string(file_url.path()).expect("Error while reading the lock file");
+            let contents = fs::read_to_string(file_url.path());
 
-            let parsed_contents: Value = match serde_json::from_str(&contents) {
-                Ok(v) => v,
-                Err(error) => {
-                    warn!("Error while prasing lock file: {}", error);
-                    Value::Null
-                }
-            };
-
-            if parsed_contents.is_null() {
-                return None;
-            }
-
-            let parsed_contents_object = parsed_contents.as_object().unwrap();
-            if parsed_contents_object.contains_key("packages") {
-                let packages = parsed_contents_object.get("packages");
-                for item in packages.unwrap().as_array().unwrap() {
-                    let package = item.as_object();
-                    match package {
-                        Some(item) => {
-                            // @todo handle unwrap.
-                            let name = item
-                                .get("name")
-                                .unwrap()
-                                .to_string()
-                                .replace("\"", "")
-                                .replace("\'", "");
-
-                            let version = item
-                                .get("version")
-                                .unwrap()
-                                .to_string()
-                                .replace("\"", "")
-                                .replace("v", "")
-                                .replace("\'", "");
-
-                            let installed_package = InstalledPackage {
-                                name: name.clone(),
-                                version,
-                            };
-
-                            composer_lock.versions.insert(name, installed_package);
+            match contents {
+                Ok(data) => {
+                    let parsed_contents: Value = match serde_json::from_str(&data) {
+                        Ok(v) => v,
+                        Err(error) => {
+                            warn!("Error while prasing lock file: {}", error);
+                            Value::Null
                         }
-                        None => {}
+                    };
+
+                    if parsed_contents.is_null() {
+                        return None;
                     }
+
+                    let parsed_contents_object = parsed_contents.as_object().unwrap();
+                    if parsed_contents_object.contains_key("packages") {
+                        let packages = parsed_contents_object.get("packages");
+                        for item in packages.unwrap().as_array().unwrap() {
+                            let package = item.as_object();
+                            match package {
+                                Some(item) => {
+                                    // @todo handle unwrap.
+                                    let name = item
+                                        .get("name")
+                                        .unwrap()
+                                        .to_string()
+                                        .replace("\"", "")
+                                        .replace("\'", "");
+
+                                    let version = item
+                                        .get("version")
+                                        .unwrap()
+                                        .to_string()
+                                        .replace("\"", "")
+                                        .replace("v", "")
+                                        .replace("\'", "");
+
+                                    let installed_package = InstalledPackage {
+                                        name: name.clone(),
+                                        version,
+                                    };
+
+                                    composer_lock.versions.insert(name, installed_package);
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+
+                    Some(composer_lock)
+                }
+                Err(error) => {
+                    info!("Can't read the lock file because its missing.");
+                    info!("{}", error);
+
+                    None
                 }
             }
-
-            Some(composer_lock)
         }
-        // @todo add logging.
-        Err(_error) => None,
+        Err(_error) => {
+            info!("Can't parse the lock file URL.");
+            None
+        }
     }
 }
 
