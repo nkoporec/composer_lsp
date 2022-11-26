@@ -14,4 +14,7 @@ For better debugging, you can use additional file logging with log4rs crate. A e
 - [ ] Actions to update the selected package.
 
 ## Install
-- TODO
+
+Using cargo
+
+ `cargo install composer_lsp`
