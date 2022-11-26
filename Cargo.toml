@@ -2,8 +2,14 @@
 name = "composer_lsp"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["nkoporec <me@nkoporec.com>"]
+description = "A LSP server for composer"
+readme = "README.md"
+repository = "https://github.com/nkoporec/composer_lsp/"
+license = "MIT"
+license-file = "LICENSE.txt"
+keywords = ["lsp", "composer", "php", "json"]
+categories = ["command-line-utilities", "development-tools", "parser-implementations"]
 
 [dependencies]
 features = { version = "0.10.0"}
