@@ -10,7 +10,8 @@ For better debugging, you can use additional file logging with log4rs crate. A e
 
 ## Features
 
-- 🛠️ Shows when a package needs an update.
+- [X] Shows when a package needs an update.
+- [ ] Actions to update the selected package.
 
 ## Install
 - TODO
