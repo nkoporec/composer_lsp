@@ -20,3 +20,38 @@ For better debugging, you can use additional file logging with log4rs crate. A e
 Using cargo
 
  `cargo install composer_lsp`
+
+## Editor Setup
+
+### Neovim
+
+Plugins required:
+ - lspconfig (https://github.com/neovim/nvim-lspconfig)
+
+After installing the package, add this to your lua config
+
+```lua
+local configs = require 'lspconfig.configs'
+local lspconfig = require 'lspconfig'
+if not configs.composer_lsp then
+ configs.composer_lsp = {
+   default_config = {
+     cmd = {'composer_lsp'},
+     filetypes = {'json'},
+     root_dir = function(pattern)
+      local cwd = vim.loop.cwd()
+      local root = lspconfig.util.root_pattern('composer.json', '.git')(pattern)
+
+      -- prefer cwd if root is a descendant
+      return lspconfig.util.path.is_descendant(cwd, root) and cwd or root
+     end,
+     settings = {},
+   },
+ }
+end
+lspconfig.composer_lsp.setup{}
+```
+
+### VS Code
+
+TODO - Still need to build an extension for it.
