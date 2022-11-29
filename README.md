@@ -11,6 +11,8 @@ For better debugging, you can use additional file logging with log4rs crate. A e
 ## Features
 
 - [X] Shows when a package needs an update.
+- [ ] Package name hover, to show details about it.
+- [ ] Package name completion.
 - [ ] Actions to update the selected package.
 
 ## Install
