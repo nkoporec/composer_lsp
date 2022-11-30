@@ -7,7 +7,7 @@ use reqwest::Result;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 
@@ -15,6 +15,9 @@ const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 pub struct Package {
     pub name: String,
     pub versions: Vec<String>,
+    pub description: String,
+    pub homepage: String,
+    pub authors: Vec<String>,
 }
 
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
@@ -33,6 +36,9 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                 let mut package_struct = Package {
                     name: package.name,
                     versions: vec![],
+                    description: "".to_string(),
+                    homepage: "".to_string(),
+                    authors: vec![],
                 };
 
                 match contents.as_object() {
@@ -88,6 +94,9 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
             let empty_package = Package {
                 name: "".to_string(),
                 versions: vec![],
+                description: "".to_string(),
+                homepage: "".to_string(),
+                authors: vec![],
             };
 
             Ok(empty_package)
@@ -189,6 +198,70 @@ fn parse_or_constraint(package: &Package, constraint: String, installed: String)
     result
 }
 
+pub async fn get_package_info(name: String) -> Option<Package> {
+    let client = Client::new();
+    let url = format!("{}/{}.json", PACKAGIST_REPO_URL, name);
+    let resp = client.get(url).send().await.unwrap();
+    let text = resp.text().await;
+
+    let contents: Value = serde_json::from_str(&text.unwrap()).unwrap_or(Value::Null);
+
+    // @todo: cleanup this mess.
+    if !contents.is_null() {
+        match contents.as_object() {
+            Some(contents_data) => {
+                let contents_packages_object = contents_data.get("packages");
+                match contents_packages_object {
+                    Some(contents_packages) => {
+                        let package_data = contents_packages.get(name.clone());
+                        match package_data {
+                            Some(data) => {
+                                let data_array = data.as_array();
+                                match data_array {
+                                    Some(package_data_array) => {
+                                        let item =
+                                            package_data_array.get(0).unwrap().as_object().unwrap();
+
+                                        let description = item.get("description").unwrap();
+                                        let name = item.get("name").unwrap();
+                                        let homepage = item.get("homepage").unwrap();
+
+                                        let mut authors = vec![];
+                                        let authors_array =
+                                            item.get("authors").unwrap().as_array().unwrap();
+                                        for item in authors_array {
+                                            let author = item.as_object().unwrap();
+                                            let author_name =
+                                                author.get("name").unwrap().as_str().unwrap();
+                                            authors.push(author_name.to_string());
+                                        }
+
+                                        let package = Package {
+                                            name: name.to_string(),
+                                            versions: vec![],
+                                            description: description.to_string(),
+                                            homepage: homepage.to_string(),
+                                            authors,
+                                        };
+
+                                        return Some(package);
+                                    }
+                                    None => {}
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    None => {}
+                }
+            }
+            None => {}
+        }
+    }
+
+    return None;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::packagist::{check_for_package_update, Package};
@@ -205,6 +278,9 @@ mod tests {
                 String::from("1.8.1"),
                 String::from("1.8.0"),
             ],
+            description: "".to_string(),
+            homepage: "".to_string(),
+            authors: vec![],
         };
 
         package_data
