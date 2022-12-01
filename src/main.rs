@@ -5,7 +5,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::composer::{ComposerFile, ComposerLock};
+use crate::composer::ComposerFile;
 
 use std::{collections::HashMap, fs::File};
 
@@ -78,26 +78,7 @@ impl LanguageServer for Backend {
 impl Backend {
     async fn on_save(&self, params: TextDocumentItem) {
         let composer_file =
-            composer::parse_json_file(params.uri.clone()).unwrap_or_else(|| ComposerFile {
-                path: "".to_string(),
-                dependencies: vec![],
-                dev_dependencies: vec![],
-            });
-
-        let mut composer_lock = ComposerLock {
-            versions: HashMap::new(),
-        };
-
-        if composer_file.path != "" {
-            match composer::parse_lock_file(&composer_file) {
-                Some(lock) => {
-                    composer_lock = lock;
-                }
-                None => {
-                    info!("No lock file present.")
-                }
-            }
-        }
+            ComposerFile::parse_from_path(params.uri.clone()).expect("Can't parse composer file");
 
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
@@ -116,11 +97,17 @@ impl Backend {
                     let mut composer_lock_version = "".to_string();
 
                     let composer_json_version = item.version.replace("\"", "");
-                    if composer_lock.versions.len() > 0 {
-                        let installed_package = composer_lock.versions.get(&item.name);
-                        match installed_package {
-                            Some(installed) => composer_lock_version = installed.version.clone(),
-                            None => {}
+                    if composer_file.lock.is_some() {
+                        let lock_file = composer_file.lock.clone().unwrap();
+
+                        if lock_file.versions.len() > 0 {
+                            let installed_package = lock_file.versions.get(&item.name);
+                            match installed_package {
+                                Some(installed) => {
+                                    composer_lock_version = installed.version.clone()
+                                }
+                                None => {}
+                            }
                         }
                     }
 
@@ -165,11 +152,7 @@ impl Backend {
     async fn on_hover(&self, params: TextDocumentPositionParams) -> Option<Hover> {
         let uri = params.text_document.uri;
         let composer_file =
-            composer::parse_json_file(uri.clone()).unwrap_or_else(|| ComposerFile {
-                path: "".to_string(),
-                dependencies: vec![],
-                dev_dependencies: vec![],
-            });
+            ComposerFile::parse_from_path(uri.clone()).expect("Can't parse composer file");
 
         // Get all dependencies and lines where they are defined.
         let mut items = HashMap::<u32, String>::new();
@@ -246,12 +229,7 @@ impl Backend {
         params: GotoDefinitionParams,
     ) -> Option<GotoDefinitionResponse> {
         let uri = params.text_document_position_params.text_document.uri;
-        let composer_file =
-            composer::parse_json_file(uri.clone()).unwrap_or_else(|| ComposerFile {
-                path: "".to_string(),
-                dependencies: vec![],
-                dev_dependencies: vec![],
-            });
+        let composer_file = ComposerFile::parse_from_path(uri.clone())?;
 
         // Get all dependencies and lines where they are defined.
         let mut items = HashMap::<u32, String>::new();
