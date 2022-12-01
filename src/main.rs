@@ -51,82 +51,7 @@ impl LanguageServer for Backend {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let composer_file =
-            composer::parse_json_file(uri.clone()).unwrap_or_else(|| ComposerFile {
-                path: "".to_string(),
-                dependencies: vec![],
-                dev_dependencies: vec![],
-            });
-
-        // Get all dependencies and lines where they are defined.
-        let mut items = HashMap::<u32, String>::new();
-        for item in composer_file.dependencies {
-            items.insert(item.line, item.name);
-        }
-
-        for item in composer_file.dev_dependencies {
-            items.insert(item.line - 1, item.name);
-        }
-
-        let line = params.text_document_position_params.position.line;
-        let dependency = items.get(&line);
-
-        match dependency {
-            Some(name) => {
-                // @todo Make this version dependent, currently it pulls the data from the latest
-                // version, but if we have a lock version, then we should pick that instead.
-                let package_info = packagist::get_package_info(name.to_string()).await;
-                match package_info {
-                    Some(data) => {
-                        let description_contents = MarkedString::from_markdown(data.description);
-                        let new_line = MarkedString::from_markdown("".to_string());
-                        let homepage_contents =
-                            MarkedString::from_markdown(format!("Homepage: {}", data.homepage));
-
-                        let authors_string = data.authors.join(",");
-                        let authors_contents =
-                            MarkedString::from_markdown(format!("Authors: {}", authors_string));
-
-                        let contents = vec![
-                            description_contents,
-                            new_line,
-                            authors_contents,
-                            homepage_contents,
-                        ];
-
-                        let range = Range::new(
-                            Position { line, character: 1 },
-                            Position {
-                                line: 0,
-                                character: 1,
-                            },
-                        );
-
-                        return Ok(Some(Hover {
-                            contents: HoverContents::Array(contents),
-                            range: Some(range),
-                        }));
-                    }
-                    None => {
-                        let error = format!("No hover data found for: {}", name);
-                        log::error!("{}", error);
-                        self.client.log_message(MessageType::ERROR, error).await;
-                    }
-                }
-            }
-            None => {
-                let error = format!(
-                    "Hover failed, because we can't find this line number: {}",
-                    line
-                );
-
-                log::error!("{}", error);
-                self.client.log_message(MessageType::ERROR, error).await;
-            }
-        }
-
-        Ok(None)
+        Ok(self.on_hover(params.text_document_position_params).await)
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -227,6 +152,85 @@ impl Backend {
         self.client
             .publish_diagnostics(params.uri.clone(), diagnostics, Some(params.version))
             .await;
+    }
+
+    async fn on_hover(&self, params: TextDocumentPositionParams) -> Option<Hover> {
+        let uri = params.text_document.uri;
+        let composer_file =
+            composer::parse_json_file(uri.clone()).unwrap_or_else(|| ComposerFile {
+                path: "".to_string(),
+                dependencies: vec![],
+                dev_dependencies: vec![],
+            });
+
+        // Get all dependencies and lines where they are defined.
+        let mut items = HashMap::<u32, String>::new();
+        for item in composer_file.dependencies {
+            items.insert(item.line, item.name);
+        }
+
+        for item in composer_file.dev_dependencies {
+            items.insert(item.line - 1, item.name);
+        }
+
+        let line = params.position.line;
+        let dependency = items.get(&line);
+
+        match dependency {
+            Some(name) => {
+                // @todo Make this version dependent, currently it pulls the data from the latest
+                // version, but if we have a lock version, then we should pick that instead.
+                let package_info = packagist::get_package_info(name.to_string()).await;
+                match package_info {
+                    Some(data) => {
+                        let description_contents = MarkedString::from_markdown(data.description);
+                        let new_line = MarkedString::from_markdown("".to_string());
+                        let homepage_contents =
+                            MarkedString::from_markdown(format!("Homepage: {}", data.homepage));
+
+                        let authors_string = data.authors.join(",");
+                        let authors_contents =
+                            MarkedString::from_markdown(format!("Authors: {}", authors_string));
+
+                        let contents = vec![
+                            description_contents,
+                            new_line,
+                            authors_contents,
+                            homepage_contents,
+                        ];
+
+                        let range = Range::new(
+                            Position { line, character: 1 },
+                            Position {
+                                line: 0,
+                                character: 1,
+                            },
+                        );
+
+                        return Some(Hover {
+                            contents: HoverContents::Array(contents),
+                            range: Some(range),
+                        });
+                    }
+                    None => {
+                        let error = format!("No hover data found for: {}", name);
+                        log::error!("{}", error);
+                        self.client.log_message(MessageType::ERROR, error).await;
+                    }
+                }
+            }
+            None => {
+                let error = format!(
+                    "Hover failed, because we can't find this line number: {}",
+                    line
+                );
+
+                log::error!("{}", error);
+                self.client.log_message(MessageType::ERROR, error).await;
+            }
+        }
+
+        None
     }
 }
 
