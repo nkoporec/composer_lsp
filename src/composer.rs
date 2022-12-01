@@ -2,9 +2,9 @@ use crate::Url;
 use log::{info, warn};
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{prelude::*, BufReader};
+use std::{collections::HashMap, hash::Hash};
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct ComposerLockFile {
@@ -39,6 +39,7 @@ pub struct ComposerFile {
     pub dependencies: Vec<ComposerDependency>,
     pub dev_dependencies: Vec<ComposerDependency>,
     pub lock: Option<ComposerLockFile>,
+    pub dependencies_by_line: HashMap<u32, String>,
 }
 
 impl ComposerFile {
@@ -47,12 +48,14 @@ impl ComposerFile {
         dependencies: Vec<ComposerDependency>,
         dev_dependencies: Vec<ComposerDependency>,
         lock: Option<ComposerLockFile>,
+        dependencies_by_line: HashMap<u32, String>,
     ) -> ComposerFile {
         ComposerFile {
             path,
             dependencies,
             dev_dependencies,
             lock,
+            dependencies_by_line,
         }
     }
 
@@ -62,8 +65,15 @@ impl ComposerFile {
             return None;
         }
 
-        let mut composer_file = Self::new(filepath.to_string(), Vec::new(), Vec::new(), None);
+        let mut composer_file = Self::new(
+            filepath.to_string(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            HashMap::new(),
+        );
 
+        let mut dependencies_by_line = HashMap::new();
         let file_open = File::open(file.path().to_string()).unwrap();
         let mut reader = BufReader::new(file_open);
         let composer_json_parsed: ComposerJsonFile =
@@ -83,6 +93,7 @@ impl ComposerFile {
                     };
 
                     composer_file.dependencies.push(composer_dependency);
+                    dependencies_by_line.insert(num - 1, name);
                 }
                 None => {
                     info!("Can't get a line number for dependency {}", name);
@@ -100,10 +111,11 @@ impl ComposerFile {
                     let composer_dependency = ComposerDependency {
                         name: name.to_string(),
                         version: version.to_string(),
-                        line: num,
+                        line: num - 1,
                     };
 
                     composer_file.dev_dependencies.push(composer_dependency);
+                    dependencies_by_line.insert(num - 1, name);
                 }
                 None => {
                     info!("Can't get a line number for dev-dependency {}", name);
@@ -111,7 +123,7 @@ impl ComposerFile {
             }
         }
 
-        // Get lock file.
+        composer_file.dependencies_by_line = dependencies_by_line;
         composer_file.lock = Self::parse_lock_file(filepath);
 
         Some(composer_file)

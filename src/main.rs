@@ -154,18 +154,8 @@ impl Backend {
         let composer_file =
             ComposerFile::parse_from_path(uri.clone()).expect("Can't parse composer file");
 
-        // Get all dependencies and lines where they are defined.
-        let mut items = HashMap::<u32, String>::new();
-        for item in composer_file.dependencies {
-            items.insert(item.line, item.name);
-        }
-
-        for item in composer_file.dev_dependencies {
-            items.insert(item.line - 1, item.name);
-        }
-
         let line = params.position.line;
-        let dependency = items.get(&line);
+        let dependency = composer_file.dependencies_by_line.get(&line);
 
         match dependency {
             Some(name) => {
@@ -231,18 +221,8 @@ impl Backend {
         let uri = params.text_document_position_params.text_document.uri;
         let composer_file = ComposerFile::parse_from_path(uri.clone())?;
 
-        // Get all dependencies and lines where they are defined.
-        let mut items = HashMap::<u32, String>::new();
-        for item in composer_file.dependencies {
-            items.insert(item.line, item.name);
-        }
-
-        for item in composer_file.dev_dependencies {
-            items.insert(item.line - 1, item.name);
-        }
-
         let line = params.text_document_position_params.position.line;
-        let dependency = items.get(&line);
+        let dependency = composer_file.dependencies_by_line.get(&line);
 
         match dependency {
             Some(name) => {
