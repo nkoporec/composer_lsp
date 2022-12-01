@@ -32,6 +32,7 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
                         supported: Some(true),
@@ -52,6 +53,13 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         Ok(self.on_hover(params.text_document_position_params).await)
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        Ok(self.goto_definition(params).await)
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -222,6 +230,65 @@ impl Backend {
             None => {
                 let error = format!(
                     "Hover failed, because we can't find this line number: {}",
+                    line
+                );
+
+                log::error!("{}", error);
+                self.client.log_message(MessageType::ERROR, error).await;
+            }
+        }
+
+        None
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Option<GotoDefinitionResponse> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let composer_file =
+            composer::parse_json_file(uri.clone()).unwrap_or_else(|| ComposerFile {
+                path: "".to_string(),
+                dependencies: vec![],
+                dev_dependencies: vec![],
+            });
+
+        // Get all dependencies and lines where they are defined.
+        let mut items = HashMap::<u32, String>::new();
+        for item in composer_file.dependencies {
+            items.insert(item.line, item.name);
+        }
+
+        for item in composer_file.dev_dependencies {
+            items.insert(item.line - 1, item.name);
+        }
+
+        let line = params.text_document_position_params.position.line;
+        let dependency = items.get(&line);
+
+        match dependency {
+            Some(name) => {
+                let package_info = packagist::get_package_info(name.to_string()).await;
+                match package_info {
+                    Some(data) => {
+                        if webbrowser::open(&data.definition_url).is_ok() {
+                            return None;
+                        }
+
+                        let error = format!("Can't open the definition_url for: {}", name);
+                        log::error!("{}", error);
+                        self.client.log_message(MessageType::ERROR, error).await;
+                    }
+                    None => {
+                        let error = format!("No definiton data found for: {}", name);
+                        log::error!("{}", error);
+                        self.client.log_message(MessageType::ERROR, error).await;
+                    }
+                }
+            }
+            None => {
+                let error = format!(
+                    "Go to definition failed, because we can't find this line number: {}",
                     line
                 );
 

@@ -7,7 +7,7 @@ use reqwest::Result;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use serde_json::Value;
-use std::{collections::HashMap, vec};
+use std::{collections::HashMap, fmt::format, vec};
 
 const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
 
@@ -18,6 +18,7 @@ pub struct Package {
     pub description: String,
     pub homepage: String,
     pub authors: Vec<String>,
+    pub definition_url: String,
 }
 
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
@@ -39,6 +40,7 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                     description: "".to_string(),
                     homepage: "".to_string(),
                     authors: vec![],
+                    definition_url: "".to_string(),
                 };
 
                 match contents.as_object() {
@@ -97,6 +99,7 @@ pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<Str
                 description: "".to_string(),
                 homepage: "".to_string(),
                 authors: vec![],
+                definition_url: "".to_string(),
             };
 
             Ok(empty_package)
@@ -225,6 +228,10 @@ pub async fn get_package_info(name: String) -> Option<Package> {
                                         let description = item.get("description").unwrap();
                                         let name = item.get("name").unwrap();
                                         let homepage = item.get("homepage").unwrap();
+                                        let definition_url = format!(
+                                            "https://packagist.org/packages/{}",
+                                            name.as_str().unwrap().replace("\"", "")
+                                        );
 
                                         let mut authors = vec![];
                                         let authors_array =
@@ -242,6 +249,7 @@ pub async fn get_package_info(name: String) -> Option<Package> {
                                             description: description.to_string(),
                                             homepage: homepage.to_string(),
                                             authors,
+                                            definition_url: definition_url.to_string(),
                                         };
 
                                         return Some(package);
@@ -281,6 +289,7 @@ mod tests {
             description: "".to_string(),
             homepage: "".to_string(),
             authors: vec![],
+            definition_url: "".to_string(),
         };
 
         package_data
