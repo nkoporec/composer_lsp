@@ -164,21 +164,17 @@ impl Backend {
                 let package_info = packagist::get_package_info(name.to_string()).await;
                 match package_info {
                     Some(data) => {
-                        let description_contents = MarkedString::from_markdown(data.description);
+                        let latest_package_version = data.versions.get(0).unwrap().to_owned();
+                        let description = latest_package_version.description.as_ref().unwrap();
+                        let homepage = latest_package_version.homepage.as_ref().unwrap();
+
+                        let description_contents =
+                            MarkedString::from_markdown(description.to_string());
                         let new_line = MarkedString::from_markdown("".to_string());
                         let homepage_contents =
-                            MarkedString::from_markdown(format!("Homepage: {}", data.homepage));
+                            MarkedString::from_markdown(format!("Homepage: {}", homepage));
 
-                        let authors_string = data.authors.join(",");
-                        let authors_contents =
-                            MarkedString::from_markdown(format!("Authors: {}", authors_string));
-
-                        let contents = vec![
-                            description_contents,
-                            new_line,
-                            authors_contents,
-                            homepage_contents,
-                        ];
+                        let contents = vec![description_contents, new_line, homepage_contents];
 
                         let range = Range::new(
                             Position { line, character: 1 },
@@ -200,6 +196,7 @@ impl Backend {
                     }
                 }
             }
+
             None => {
                 let error = format!(
                     "Hover failed, because we can't find this line number: {}",
@@ -229,7 +226,10 @@ impl Backend {
                 let package_info = packagist::get_package_info(name.to_string()).await;
                 match package_info {
                     Some(data) => {
-                        if webbrowser::open(&data.definition_url).is_ok() {
+                        let latest_package_version = data.versions.get(0).unwrap().to_owned();
+                        let packagist_url = latest_package_version.packagist_url.as_ref().unwrap();
+
+                        if webbrowser::open(packagist_url).is_ok() {
                             return None;
                         }
 

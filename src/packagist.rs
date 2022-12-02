@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, fmt::format, vec};
 
-const PACKAGIST_REPO_URL: &str = "https://repo.packagist.org/p2";
+const PACKAGIST_API_URL: &str = "https://repo.packagist.org/p2";
+const PACKAGIST_REPO_URL: &str = "https://packagist.org/packages";
 
 #[derive(Debug)]
 pub struct Package {
@@ -21,13 +22,56 @@ pub struct Package {
     pub definition_url: String,
 }
 
+#[derive(Debug)]
+pub struct PackageApi {
+    pub name: String,
+    pub versions: Vec<PackageVersion>,
+}
+
+impl PackageApi {
+    pub fn new(name: String, versions: Vec<PackageVersion>) -> PackageApi {
+        PackageApi { name, versions }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PackageVersion {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub keywords: Option<Vec<String>>,
+    pub homepage: Option<String>,
+    pub version: Option<String>,
+    #[serde(rename = "version_normalized")]
+    pub version_normalized: Option<String>,
+    #[serde(default)]
+    pub license: Option<Vec<String>>,
+    #[serde(default)]
+    pub authors: Option<Vec<PackageAuthorField>>,
+    // @todo: require, require-dev can be string => __unset
+    // #[serde(rename = "type")]
+    // pub require: Option<Value>,
+    // #[serde(rename = "require-dev", default)]
+    // pub require_dev: Option<HashMap<String, String>>,
+    pub packagist_url: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageAuthorField {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub homepage: Option<String>,
+    pub role: Option<String>,
+}
+
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
     let client = Client::new();
 
     let bodies = future::join_all(packages.into_iter().map(|package| {
         let client = &client;
         async move {
-            let url = format!("{}/{}.json", PACKAGIST_REPO_URL, package.name);
+            let url = format!("{}/{}.json", PACKAGIST_API_URL, package.name);
             let resp = client.get(url).send().await?;
             let text = resp.text().await;
 
@@ -201,70 +245,50 @@ fn parse_or_constraint(package: &Package, constraint: String, installed: String)
     result
 }
 
-pub async fn get_package_info(name: String) -> Option<Package> {
+pub async fn get_package_info(name: String) -> Option<PackageApi> {
     let client = Client::new();
-    let url = format!("{}/{}.json", PACKAGIST_REPO_URL, name);
+    let url = format!("{}/{}.json", PACKAGIST_API_URL, name);
     let resp = client.get(url).send().await.unwrap();
     let text = resp.text().await;
 
     let contents: Value = serde_json::from_str(&text.unwrap()).unwrap_or(Value::Null);
 
-    // @todo: cleanup this mess.
-    if !contents.is_null() {
-        match contents.as_object() {
-            Some(contents_data) => {
-                let contents_packages_object = contents_data.get("packages");
-                match contents_packages_object {
-                    Some(contents_packages) => {
-                        let package_data = contents_packages.get(name.clone());
-                        match package_data {
-                            Some(data) => {
-                                let data_array = data.as_array();
-                                match data_array {
-                                    Some(package_data_array) => {
-                                        let item =
-                                            package_data_array.get(0).unwrap().as_object().unwrap();
+    if contents.is_null() {
+        return None;
+    }
 
-                                        let description = item.get("description").unwrap();
-                                        let name = item.get("name").unwrap();
-                                        let homepage = item.get("homepage").unwrap();
-                                        let definition_url = format!(
-                                            "https://packagist.org/packages/{}",
-                                            name.as_str().unwrap().replace("\"", "")
-                                        );
+    match contents.as_object() {
+        Some(contents_data) => {
+            let contents_packages_object = contents_data.get("packages");
+            match contents_packages_object {
+                Some(contents_packages) => {
+                    let package_data = contents_packages.get(name.clone());
+                    match package_data {
+                        Some(versions) => {
+                            let mut package = PackageApi::new(name.clone(), vec![]);
+                            let all_versions = versions.as_array().unwrap().to_owned();
+                            for item in all_versions.into_iter() {
+                                log::info!("ITEM {}", item);
+                                let mut package_version: PackageVersion =
+                                    serde_json::from_value(item).unwrap();
 
-                                        let mut authors = vec![];
-                                        let authors_array =
-                                            item.get("authors").unwrap().as_array().unwrap();
-                                        for item in authors_array {
-                                            let author = item.as_object().unwrap();
-                                            let author_name =
-                                                author.get("name").unwrap().as_str().unwrap();
-                                            authors.push(author_name.to_string());
-                                        }
-
-                                        let package = Package {
-                                            name: name.to_string(),
-                                            versions: vec![],
-                                            description: description.to_string(),
-                                            homepage: homepage.to_string(),
-                                            authors,
-                                            definition_url: definition_url.to_string(),
-                                        };
-
-                                        return Some(package);
-                                    }
-                                    None => {}
-                                }
+                                package_version.packagist_url = Some(format!(
+                                    "{}/{}",
+                                    PACKAGIST_REPO_URL,
+                                    name.replace("\"", "")
+                                ));
+                                package.versions.push(package_version);
                             }
-                            None => {}
+
+                            return Some(package);
                         }
+                        None => {}
                     }
-                    None => {}
                 }
+                None => {}
             }
-            None => {}
         }
+        None => {}
     }
 
     return None;
