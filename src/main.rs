@@ -158,6 +158,10 @@ impl Backend {
     }
 
     async fn on_hover(&self, params: TextDocumentPositionParams) -> Option<Hover> {
+        if !self.composer_file.contains_key("data") {
+            return None;
+        }
+
         let composer_file = self.composer_file.get("data").unwrap();
 
         let line = params.position.line;
@@ -289,6 +293,10 @@ impl Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Option<GotoDefinitionResponse> {
+        if !self.composer_file.contains_key("data") {
+            return None;
+        }
+
         let composer_file = self.composer_file.get("data").unwrap();
 
         let line = params.text_document_position_params.position.line;
