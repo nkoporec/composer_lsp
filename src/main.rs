@@ -6,7 +6,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use crate::composer::ComposerFile;
+use crate::{composer::ComposerFile, packagist::PackageVersion};
 
 mod composer;
 mod packagist;
@@ -165,22 +165,72 @@ impl Backend {
 
         match dependency {
             Some(name) => {
-                // @todo Make this version dependent, currently it pulls the data from the latest
-                // version, but if we have a lock version, then we should pick that instead.
                 let package_info = packagist::get_package_info(name.to_string()).await;
                 match package_info {
                     Some(data) => {
-                        let latest_package_version = data.versions.get(0).unwrap().to_owned();
-                        let description = latest_package_version.description.as_ref().unwrap();
-                        let homepage = latest_package_version.homepage.as_ref().unwrap();
+                        let mut package_version = PackageVersion {
+                            name: None,
+                            description: None,
+                            keywords: None,
+                            homepage: None,
+                            version: None,
+                            version_normalized: None,
+                            license: None,
+                            authors: None,
+                            packagist_url: None,
+                        };
 
-                        let description_contents =
-                            MarkedString::from_markdown(description.to_string());
-                        let new_line = MarkedString::from_markdown("".to_string());
-                        let homepage_contents =
-                            MarkedString::from_markdown(format!("Homepage: {}", homepage));
+                        match &composer_file.lock {
+                            Some(lock) => {
+                                if lock.versions.contains_key(name) {
+                                    let installed_package = lock.versions.get(name).unwrap();
 
-                        let contents = vec![description_contents, new_line, homepage_contents];
+                                    for item in data.versions.iter() {
+                                        let item_version =
+                                            item.version.as_ref().unwrap().to_owned();
+
+                                        if item_version.replace(".", "")
+                                            == installed_package.version.replace(".", "")
+                                        {
+                                            package_version = item.to_owned();
+                                        }
+                                    }
+                                } else {
+                                    package_version = data.versions.get(0).unwrap().to_owned();
+                                }
+                            }
+                            None => {
+                                package_version = data.versions.get(0).unwrap().to_owned();
+                            }
+                        }
+
+                        let mut contents = vec![];
+
+                        let description = package_version.description.as_ref();
+                        match description {
+                            Some(desc) => {
+                                let description_contents =
+                                    MarkedString::from_markdown(desc.to_string());
+                                contents.push(description_contents);
+
+                                let new_line = MarkedString::from_markdown("".to_string());
+                                contents.push(new_line);
+                            }
+                            None => {}
+                        }
+
+                        let homepage = package_version.homepage.as_ref();
+                        match homepage {
+                            Some(page) => {
+                                let homepage_contents =
+                                    MarkedString::from_markdown(format!("Homepage: {}", page));
+                                contents.push(homepage_contents);
+
+                                let new_line = MarkedString::from_markdown("".to_string());
+                                contents.push(new_line);
+                            }
+                            None => {}
+                        }
 
                         let range = Range::new(
                             Position { line, character: 1 },
@@ -231,16 +281,53 @@ impl Backend {
                 let package_info = packagist::get_package_info(name.to_string()).await;
                 match package_info {
                     Some(data) => {
-                        let latest_package_version = data.versions.get(0).unwrap().to_owned();
-                        let packagist_url = latest_package_version.packagist_url.as_ref().unwrap();
+                        let mut package_version = PackageVersion {
+                            name: None,
+                            description: None,
+                            keywords: None,
+                            homepage: None,
+                            version: None,
+                            version_normalized: None,
+                            license: None,
+                            authors: None,
+                            packagist_url: None,
+                        };
 
-                        if webbrowser::open(packagist_url).is_ok() {
-                            return None;
+                        match &composer_file.lock {
+                            Some(lock) => {
+                                if lock.versions.contains_key(name) {
+                                    let installed_package = lock.versions.get(name).unwrap();
+
+                                    for item in data.versions.iter() {
+                                        let item_version =
+                                            item.version.as_ref().unwrap().to_owned();
+
+                                        if item_version == installed_package.version {
+                                            package_version = item.to_owned();
+                                        }
+                                    }
+                                } else {
+                                    package_version = data.versions.get(0).unwrap().to_owned();
+                                }
+                            }
+                            None => {
+                                package_version = data.versions.get(0).unwrap().to_owned();
+                            }
                         }
 
-                        let error = format!("Can't open the definition_url for: {}", name);
-                        log::error!("{}", error);
-                        self.client.log_message(MessageType::ERROR, error).await;
+                        let packagist_url = package_version.packagist_url.as_ref();
+                        match packagist_url {
+                            Some(page) => {
+                                if webbrowser::open(page).is_ok() {
+                                    return None;
+                                }
+                            }
+                            None => {
+                                let error = format!("Can't open the definition_url for: {}", name);
+                                log::error!("{}", error);
+                                self.client.log_message(MessageType::ERROR, error).await;
+                            }
+                        }
                     }
                     None => {
                         let error = format!("No definiton data found for: {}", name);
