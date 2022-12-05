@@ -1,3 +1,4 @@
+use dashmap::DashMap;
 use log::info;
 use log4rs;
 use std::env;
@@ -13,6 +14,7 @@ mod packagist;
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    data: DashMap<String, ComposerFile>,
 }
 
 struct TextDocumentItem {
@@ -69,7 +71,7 @@ impl LanguageServer for Backend {
             uri: params.text_document.uri,
             version: 1,
         })
-        .await
+        .await;
     }
 }
 
@@ -77,6 +79,14 @@ impl Backend {
     async fn on_save(&self, params: TextDocumentItem) {
         let composer_file =
             ComposerFile::parse_from_path(params.uri.clone()).expect("Can't parse composer file");
+
+        // Clear any old data.
+        if self.data.contains_key("composer_file") {
+            self.data.remove("composer_file").unwrap();
+        }
+
+        self.data
+            .insert("composer_file".to_string(), composer_file.clone());
 
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
@@ -148,9 +158,7 @@ impl Backend {
     }
 
     async fn on_hover(&self, params: TextDocumentPositionParams) -> Option<Hover> {
-        let uri = params.text_document.uri;
-        let composer_file =
-            ComposerFile::parse_from_path(uri.clone()).expect("Can't parse composer file");
+        let composer_file = self.data.get("composer_file").unwrap();
 
         let line = params.position.line;
         let dependency = composer_file.dependencies_by_line.get(&line);
@@ -213,8 +221,7 @@ impl Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Option<GotoDefinitionResponse> {
-        let uri = params.text_document_position_params.text_document.uri;
-        let composer_file = ComposerFile::parse_from_path(uri.clone())?;
+        let composer_file = self.data.get("composer_file").unwrap();
 
         let line = params.text_document_position_params.position.line;
         let dependency = composer_file.dependencies_by_line.get(&line);
@@ -270,6 +277,10 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::build(|client| Backend { client }).finish();
+    let (service, socket) = LspService::build(|client| Backend {
+        client,
+        data: DashMap::new(),
+    })
+    .finish();
     Server::new(stdin, stdout, socket).serve(service).await;
 }

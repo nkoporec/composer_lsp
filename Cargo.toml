@@ -24,3 +24,4 @@ tokio = { version = "1.17.0", features = ["full"] }
 tower-lsp = "0.17.0"
 url = "2.2.2"
 webbrowser = "0.8.2"
+dashmap = "5.4.0"

@@ -33,7 +33,7 @@ struct ComposerJsonFile {
     require_dev: HashMap<String, String>,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct ComposerFile {
     pub path: String,
     pub dependencies: Vec<ComposerDependency>,
