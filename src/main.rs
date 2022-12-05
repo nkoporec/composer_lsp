@@ -216,7 +216,16 @@ impl Backend {
                                 let new_line = MarkedString::from_markdown("".to_string());
                                 contents.push(new_line);
                             }
-                            None => {}
+                            None => {
+                                // Just pull latest.
+                                let latest_package_version =
+                                    data.versions.get(0).unwrap().to_owned();
+
+                                let description_contents = MarkedString::from_markdown(
+                                    latest_package_version.description.unwrap().to_string(),
+                                );
+                                contents.push(description_contents);
+                            }
                         }
 
                         let homepage = package_version.homepage.as_ref();
@@ -229,7 +238,16 @@ impl Backend {
                                 let new_line = MarkedString::from_markdown("".to_string());
                                 contents.push(new_line);
                             }
-                            None => {}
+                            None => {
+                                // Just pull latest.
+                                let latest_package_version =
+                                    data.versions.get(0).unwrap().to_owned();
+
+                                let homepage_contents = MarkedString::from_markdown(
+                                    latest_package_version.homepage.unwrap().to_string(),
+                                );
+                                contents.push(homepage_contents);
+                            }
                         }
 
                         let range = Range::new(
@@ -323,9 +341,20 @@ impl Backend {
                                 }
                             }
                             None => {
-                                let error = format!("Can't open the definition_url for: {}", name);
-                                log::error!("{}", error);
-                                self.client.log_message(MessageType::ERROR, error).await;
+                                // Try to get the latest one.
+                                let latest_package_version =
+                                    data.versions.get(0).unwrap().to_owned();
+
+                                if webbrowser::open(&latest_package_version.packagist_url.unwrap())
+                                    .is_ok()
+                                {
+                                    return None;
+                                } else {
+                                    let error =
+                                        format!("Can't open the definition_url for: {}", name);
+                                    log::error!("{}", error);
+                                    self.client.log_message(MessageType::ERROR, error).await;
+                                }
                             }
                         }
                     }
