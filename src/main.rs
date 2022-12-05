@@ -14,7 +14,7 @@ mod packagist;
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    data: DashMap<String, ComposerFile>,
+    composer_file: DashMap<String, ComposerFile>,
 }
 
 struct TextDocumentItem {
@@ -81,12 +81,12 @@ impl Backend {
             ComposerFile::parse_from_path(params.uri.clone()).expect("Can't parse composer file");
 
         // Clear any old data.
-        if self.data.contains_key("composer_file") {
-            self.data.remove("composer_file").unwrap();
+        if self.composer_file.contains_key("data") {
+            self.composer_file.remove("data").unwrap();
         }
 
-        self.data
-            .insert("composer_file".to_string(), composer_file.clone());
+        self.composer_file
+            .insert("data".to_string(), composer_file.clone());
 
         let update_data = packagist::get_packages_info(composer_file.dependencies.clone()).await;
 
@@ -158,7 +158,7 @@ impl Backend {
     }
 
     async fn on_hover(&self, params: TextDocumentPositionParams) -> Option<Hover> {
-        let composer_file = self.data.get("composer_file").unwrap();
+        let composer_file = self.composer_file.get("data").unwrap();
 
         let line = params.position.line;
         let dependency = composer_file.dependencies_by_line.get(&line);
@@ -221,7 +221,7 @@ impl Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Option<GotoDefinitionResponse> {
-        let composer_file = self.data.get("composer_file").unwrap();
+        let composer_file = self.composer_file.get("data").unwrap();
 
         let line = params.text_document_position_params.position.line;
         let dependency = composer_file.dependencies_by_line.get(&line);
@@ -279,7 +279,7 @@ async fn main() {
 
     let (service, socket) = LspService::build(|client| Backend {
         client,
-        data: DashMap::new(),
+        composer_file: DashMap::new(),
     })
     .finish();
     Server::new(stdin, stdout, socket).serve(service).await;
