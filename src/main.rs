@@ -1,13 +1,11 @@
-use log::{error, info, warn};
+use log::info;
 use log4rs;
-use std::{env, fmt::format, hash::Hash};
+use std::env;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use crate::composer::ComposerFile;
-
-use std::{collections::HashMap, fs::File};
 
 mod composer;
 mod packagist;
@@ -24,7 +22,7 @@ struct TextDocumentItem {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             server_info: None,
             capabilities: ServerCapabilities {
