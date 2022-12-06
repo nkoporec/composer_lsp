@@ -1,6 +1,6 @@
 [package]
 name = "composer_lsp"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 authors = ["nkoporec <me@nkoporec.com>"]
 description = "A LSP server for composer"
