@@ -153,17 +153,6 @@ impl Backend {
         let changes = &params.content_changes[0];
         let ropey = ropey::Rope::from_str(&changes.text);
 
-        self.client
-            .log_message(MessageType::ERROR, format!("CHANGES TEXT:{}", changes.text))
-            .await;
-
-        self.client
-            .log_message(
-                MessageType::ERROR,
-                format!("CHANGES COUNT:{}", &params.content_changes.len()),
-            )
-            .await;
-
         // clear buffer.
         self.buffer.clear();
 
