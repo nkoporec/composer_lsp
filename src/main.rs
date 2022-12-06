@@ -15,6 +15,8 @@ mod packagist;
 struct Backend {
     client: Client,
     composer_file: DashMap<String, ComposerFile>,
+    packagist_packages: DashMap<String, Vec<String>>,
+    buffer: DashMap<u32, String>,
 }
 
 struct TextDocumentItem {
@@ -31,6 +33,18 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                completion_provider: Some(CompletionOptions {
+                    resolve_provider: Some(false),
+                    trigger_characters: {
+                        let chars = ('a'..='z').into_iter().collect::<Vec<char>>();
+                        let triggers: Vec<String> =
+                            chars.clone().iter().map(|x| x.to_string()).collect();
+
+                        Some(triggers)
+                    },
+                    work_done_progress_options: Default::default(),
+                    all_commit_characters: None,
+                }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 workspace: Some(WorkspaceServerCapabilities {
@@ -46,6 +60,16 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
+        let all_packages = packagist::get_all_packages().await;
+
+        // Clear any old data.
+        if self.packagist_packages.contains_key("data") {
+            self.packagist_packages.remove("data").unwrap();
+        }
+
+        self.packagist_packages
+            .insert("data".to_string(), all_packages);
+
         self.client
             .log_message(MessageType::INFO, "composer_lsp initialized!")
             .await;
@@ -66,6 +90,10 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
+    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+        self.on_change(params).await
+    }
+
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         self.on_save(TextDocumentItem {
             uri: params.text_document.uri,
@@ -73,9 +101,80 @@ impl LanguageServer for Backend {
         })
         .await;
     }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        if !self.packagist_packages.contains_key("data") {
+            return Ok(None);
+        }
+
+        let position = params.text_document_position.position;
+        let line_text = self.buffer.get(&position.line).unwrap().to_owned();
+
+        let start_completion_pos = line_text.rfind("\"");
+        match start_completion_pos {
+            Some(start_pos) => {
+                let partial_completion = line_text[start_pos..]
+                    .to_string()
+                    .replace(" ", "")
+                    .replace("\"", "")
+                    .replace("\n", "");
+
+                if partial_completion.len() >= 2 {
+                    let completions = || -> Option<Vec<CompletionItem>> {
+                        let mut ret = vec![];
+                        let all_packages = self.packagist_packages.get("data").unwrap();
+                        for name in all_packages.iter() {
+                            if name.starts_with(&partial_completion) {
+                                ret.push(CompletionItem {
+                                    label: name.to_string(),
+                                    insert_text: Some(name.to_string()),
+                                    kind: Some(CompletionItemKind::VARIABLE),
+                                    detail: Some(name.to_string()),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+
+                        Some(ret)
+                    }();
+
+                    return Ok(completions.map(CompletionResponse::Array));
+                }
+            }
+            None => {}
+        };
+
+        Ok(None)
+    }
 }
 
 impl Backend {
+    async fn on_change(&self, params: DidChangeTextDocumentParams) {
+        let changes = &params.content_changes[0];
+        let ropey = ropey::Rope::from_str(&changes.text);
+
+        self.client
+            .log_message(MessageType::ERROR, format!("CHANGES TEXT:{}", changes.text))
+            .await;
+
+        self.client
+            .log_message(
+                MessageType::ERROR,
+                format!("CHANGES COUNT:{}", &params.content_changes.len()),
+            )
+            .await;
+
+        // clear buffer.
+        self.buffer.clear();
+
+        // write to buffer.
+        let mut line_num = 0;
+        for line in ropey.lines() {
+            self.buffer.insert(line_num, line.to_string());
+            line_num += 1;
+        }
+    }
+
     async fn on_save(&self, params: TextDocumentItem) {
         let composer_file =
             ComposerFile::parse_from_path(params.uri.clone()).expect("Can't parse composer file");
@@ -404,6 +503,8 @@ async fn main() {
     let (service, socket) = LspService::build(|client| Backend {
         client,
         composer_file: DashMap::new(),
+        packagist_packages: DashMap::new(),
+        buffer: DashMap::new(),
     })
     .finish();
     Server::new(stdin, stdout, socket).serve(service).await;

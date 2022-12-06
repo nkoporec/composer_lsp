@@ -49,6 +49,30 @@ pub struct PackageAuthorField {
     pub role: Option<String>,
 }
 
+pub async fn get_all_packages() -> Vec<String> {
+    let client = Client::new();
+    let url = format!("{}/list.json", PACKAGIST_REPO_URL);
+    let resp = client.get(url).send().await.unwrap();
+    let text = resp.text().await;
+    let mut results = vec![];
+
+    let contents: Value = serde_json::from_str(&text.unwrap()).unwrap_or(Value::Null);
+    let packages = contents
+        .as_object()
+        .unwrap()
+        .get("packageNames")
+        .unwrap()
+        .as_array()
+        .unwrap();
+
+    for item in packages.iter() {
+        let name = item.as_str().unwrap();
+        results.push(name.to_string());
+    }
+
+    return results;
+}
+
 pub async fn get_packages_info(packages: Vec<ComposerDependency>) -> HashMap<String, Package> {
     let mut result = HashMap::new();
 
