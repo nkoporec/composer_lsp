@@ -505,13 +505,25 @@ impl Backend {
 
         match dependency_found {
             Some(dependency) => {
-                let update_command = Command {
-                    title: "Update package".to_string(),
-                    command: "update".to_string(),
-                    arguments: Some(vec![Value::from(dependency.to_owned())]),
-                };
+                let mut commands = vec![];
 
-                let commands = vec![CodeActionOrCommand::Command(update_command)];
+                if composer_file.lock.is_none() {
+                    let install_command = Command {
+                        title: "Install all packages".to_string(),
+                        command: "install".to_string(),
+                        arguments: Some(vec![]),
+                    };
+
+                    commands.push(CodeActionOrCommand::Command(install_command));
+                } else {
+                    let update_command = Command {
+                        title: "Update package".to_string(),
+                        command: "update".to_string(),
+                        arguments: Some(vec![Value::from(dependency.to_owned())]),
+                    };
+
+                    commands.push(CodeActionOrCommand::Command(update_command));
+                }
 
                 return Ok(Some(commands));
             }
@@ -565,6 +577,45 @@ impl Backend {
                             .show_message(
                                 MessageType::INFO,
                                 format!("Composer package {} was updated.", dependency),
+                            )
+                            .await;
+                        return Ok(None);
+                    }
+                    Err(_) => {
+                        return Err(Error::new(ServerError(400)));
+                    }
+                };
+            }
+            "install" => {
+                let command_path = composer_file
+                    .path
+                    .replace("/composer.json", "")
+                    .replace("file://", "");
+
+                let output = ProcessCommand::new("composer")
+                    .arg(format!("--working-dir={}", command_path).as_str())
+                    .arg("install")
+                    .output()
+                    .expect("failed to execute process");
+
+                if !output.status.success() {
+                    self.client
+                        .show_message(MessageType::INFO, "Composer command failed.")
+                        .await;
+                    return Err(Error::new(ServerError(400)));
+                }
+
+                match from_utf8(&output.stderr) {
+                    Ok(message) => {
+                        if message.contains("Your requirements could not be resolved to an installable set of packages") {
+                            self.client.show_message(MessageType::INFO, "Composer dependencies could not be resolved.").await;
+                            return Ok(None);
+                        }
+
+                        self.client
+                            .show_message(
+                                MessageType::INFO,
+                                format!("Composer packages were installed.",),
                             )
                             .await;
                         return Ok(None);
