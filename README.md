@@ -14,7 +14,7 @@ For better debugging, you can use additional file logging with log4rs crate. A e
 - [X] Package name hover, to show details about it.
 - [X] Package go to definition.
 - [X] Package name completion.
-- [ ] Actions to update the selected package.
+- [X] Actions to update the selected package.
 
 ## Install
 
