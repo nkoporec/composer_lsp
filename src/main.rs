@@ -1,8 +1,10 @@
 use dashmap::DashMap;
 use log::info;
 use log4rs;
+use serde_json::Value;
 use std::env;
-use tower_lsp::jsonrpc::Result;
+use std::{process::Command as ProcessCommand, str::from_utf8};
+use tower_lsp::jsonrpc::{Error, ErrorCode::ServerError, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -46,6 +48,7 @@ impl LanguageServer for Backend {
                     all_commit_characters: None,
                 }),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 workspace: Some(WorkspaceServerCapabilities {
                     workspace_folders: Some(WorkspaceFoldersServerCapabilities {
@@ -77,6 +80,10 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         Ok(self.on_hover(params.text_document_position_params).await)
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        self.on_code_action(params).await
     }
 
     async fn goto_definition(
@@ -145,6 +152,10 @@ impl LanguageServer for Backend {
         };
 
         Ok(None)
+    }
+
+    async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
+        self.on_execute_command(params).await
     }
 }
 
@@ -473,6 +484,98 @@ impl Backend {
         }
 
         None
+    }
+
+    async fn on_code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        if !self.composer_file.contains_key("data") {
+            return Err(Error::method_not_found());
+        }
+
+        let composer_file = self.composer_file.get("data").unwrap();
+
+        let range_start_line = params.range.start.line;
+        let range_end_line = params.range.end.line;
+
+        if range_start_line != range_end_line {
+            return Err(Error::method_not_found());
+        }
+
+        let line = range_start_line;
+        let dependency_found = composer_file.dependencies_by_line.get(&line);
+
+        match dependency_found {
+            Some(dependency) => {
+                let update_command = Command {
+                    title: "Update package".to_string(),
+                    command: "update".to_string(),
+                    arguments: Some(vec![Value::from(dependency.to_owned())]),
+                };
+
+                let commands = vec![CodeActionOrCommand::Command(update_command)];
+
+                return Ok(Some(commands));
+            }
+            None => {
+                return Err(Error::method_not_found());
+            }
+        }
+    }
+
+    async fn on_execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
+        if !self.composer_file.contains_key("data") {
+            return Ok(None);
+        }
+
+        let composer_file = self.composer_file.get("data").unwrap();
+        let command = &params.command[..];
+
+        match command {
+            "update" => {
+                let command_path = composer_file
+                    .path
+                    .replace("/composer.json", "")
+                    .replace("file://", "");
+                if params.arguments.len() <= 0 {
+                    return Ok(None);
+                }
+
+                let dependency = params.arguments.get(0).unwrap().as_str().unwrap();
+                let output = ProcessCommand::new("composer")
+                    .arg(format!("--working-dir={}", command_path).as_str())
+                    .arg("update")
+                    .arg(dependency)
+                    .output()
+                    .expect("failed to execute process");
+
+                if !output.status.success() {
+                    self.client
+                        .show_message(MessageType::INFO, "Composer command failed.")
+                        .await;
+                    return Err(Error::new(ServerError(400)));
+                }
+
+                match from_utf8(&output.stderr) {
+                    Ok(message) => {
+                        if message.contains("Your requirements could not be resolved to an installable set of packages") {
+                            self.client.show_message(MessageType::INFO, "Composer dependencies could not be resolved.").await;
+                            return Ok(None);
+                        }
+
+                        self.client
+                            .show_message(
+                                MessageType::INFO,
+                                format!("Composer package {} was updated.", dependency),
+                            )
+                            .await;
+                        return Ok(None);
+                    }
+                    Err(_) => {
+                        return Err(Error::new(ServerError(400)));
+                    }
+                };
+            }
+            _ => return Err(Error::method_not_found()),
+        }
     }
 }
 
